@@ -1,4 +1,4 @@
-## thread-Safe Script Runner
+## Thread-Safe Script Runner
 
 *This is a Thread-Safe Script Runner For Excecute All Type Of Script By Writing C# Code Only*
 
