@@ -15,7 +15,7 @@ namespace ScriptEngine
     {
         public string Expression { get; private set; }
 
-        public ExpressionEvaluationException(string expression, string message) : base($"خطا در ارزیابی عبارت '{expression}': {message}")
+        public ExpressionEvaluationException(string expression, string message) : base($"Error evaluating expression '{expression}': {message}")
         {
             Expression = expression;
         }
@@ -24,7 +24,7 @@ namespace ScriptEngine
     {
         public string FunctionName { get; private set; }
 
-        public FunctionRegistrationException(string functionName, string message) : base($"خطا در ثبت تابع '{functionName}': {message}")
+        public FunctionRegistrationException(string functionName, string message) : base($"Error in function registration '{functionName}': {message}")
         {
             FunctionName = functionName;
         }
@@ -91,12 +91,12 @@ namespace ScriptEngine
         private ScriptExecutor()
         {
             _customFunctions = new ConcurrentDictionary<string, Func<object[], object>>(StringComparer.OrdinalIgnoreCase);
-            // اضافه کردن تابع iif به صورت پیش‌فرض
+            // Add Defualt Function
             AddCustomFunction("iif", parameters =>
             {
                 if (parameters.Length != 3)
                 {
-                    RaiseError(new Exception("تعداد پارامتر های iif بیش از حد مجاز است"));
+                    RaiseError(new Exception("iif have more than three parameter"));
                 }
                 bool condition = Convert.ToBoolean(parameters[0]);
                 return condition ? parameters[1] : parameters[2];
@@ -131,8 +131,7 @@ namespace ScriptEngine
 
             _lock.EnterReadLock();
             try
-            {
-                // ذخیره توابع در یک متغیر محلی
+            {                
                 var localFunctions = new ConcurrentDictionary<string, Func<object[], object>>(_customFunctions, StringComparer.OrdinalIgnoreCase);
                 getFunction = name => localFunctions.TryGetValue(name, out var func) ? func : null;
             }
@@ -155,7 +154,7 @@ namespace ScriptEngine
                 }
                 else
                 {
-                    throw new ExpressionEvaluationException(expression, $"تابع '{name}' تعریف نشده است.");
+                    throw new ExpressionEvaluationException(expression, $"function '{name}' not declared");
                 }
             };
 
