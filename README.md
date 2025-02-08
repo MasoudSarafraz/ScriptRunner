@@ -38,5 +38,8 @@ var engine = ScriptEngineFactory.Create();
       }
       return 0;
   });
+```
+## Run Scripts
+```
 var result = engine.Run("iff(1=1,abs(-90),100)");
 ```
