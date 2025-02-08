@@ -6,6 +6,8 @@
 	<AssemblyVersion></AssemblyVersion>
 	<FileVersion></FileVersion>
 	<Version>03.11.20.1</Version>
+	<RepositoryUrl>https://github.com/MasoudSarafraz/ScriptRunner.git</RepositoryUrl>
+	<Description></Description>
 	</PropertyGroup>
 
 	<ItemGroup>
