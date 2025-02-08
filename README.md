@@ -1,8 +1,9 @@
 ## Thread-Safe Script Runner
 
 *This is a Thread-Safe Script Runner For Excecute All Type Of Script By Writing C# Code Only*
+*This package supports all mathematical functions by default and there is no need to define them*
 
-## Create new Instance Of Engine
+## Create new Instance of Engine
 
 ```
 using ScriptEngine;
@@ -41,5 +42,5 @@ var engine = ScriptEngineFactory.Create();
 ```
 ## Run Scripts
 ````
-var result = engine.Run("iff(1=1,abs(-90),100)");
+var result = engine.Run("iff(1=1,abs(-90),100+1*8)");
 ```
