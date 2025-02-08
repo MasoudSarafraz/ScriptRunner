@@ -2,7 +2,6 @@
 using System.Collections.Concurrent;
 using System.Threading;
 using NCalc;
-//This is for test git.
 namespace ScriptEngine
 {
     #region Error Handling
