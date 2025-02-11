@@ -17,7 +17,7 @@ var engine = ScriptEngineFactory.Create();
   {
       if (parameters.Length != 3)
       {
-          RaiseError(new Exception("iff have more than three parameters"));
+          throw new Exception("iff have more than three parameters");
       }
       bool condition = Convert.ToBoolean(parameters[0]);
       return condition ? parameters[1] : parameters[2];
