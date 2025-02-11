@@ -4,54 +4,6 @@ using System.Threading;
 using NCalc;
 namespace ScriptEngine
 {
-    #region Error Handling
-
-    public abstract class ScriptExecutionException : Exception
-    {
-        protected ScriptExecutionException(string message) : base(message) { }
-    }
-    public class ExpressionEvaluationException : ScriptExecutionException
-    {
-        public string Expression { get; private set; }
-
-        public ExpressionEvaluationException(string expression, string message) : base($"Error evaluating expression '{expression}': {message}")
-        {
-            Expression = expression;
-        }
-    }
-    public class FunctionRegistrationException : ScriptExecutionException
-    {
-        public string FunctionName { get; private set; }
-
-        public FunctionRegistrationException(string functionName, string message) : base($"Error in function registration '{functionName}': {message}")
-        {
-            FunctionName = functionName;
-        }
-    }
-
-    public class ErrorEventArgs : EventArgs
-    {
-        public Exception Exception { get; private set; }
-
-        public ErrorEventArgs(Exception exception)
-        {
-            Exception = exception;
-        }
-    }
-
-    #endregion
-
-    #region Script Executor
-
-    public interface IScriptExecutor : IDisposable
-    {
-        event EventHandler<ErrorEventArgs> OnError;
-
-        dynamic Run(string expression);
-
-        void AddCustomFunction(string name, Func<object[], object> function);
-    }
-
     internal sealed class ScriptExecutor : IScriptExecutor
     {
         private static readonly Lazy<ScriptExecutor> _instance = new Lazy<ScriptExecutor>(() => new ScriptExecutor());
@@ -86,7 +38,6 @@ namespace ScriptEngine
                 }
             }
         }
-
         private ScriptExecutor()
         {
             _customFunctions = new ConcurrentDictionary<string, Func<object[], object>>(StringComparer.OrdinalIgnoreCase);
@@ -101,12 +52,10 @@ namespace ScriptEngine
                 return condition ? parameters[1] : parameters[2];
             });
         }
-
         public static IScriptExecutor Instance
         {
             get { return _instance.Value; }
         }
-
         public void AddCustomFunction(string name, Func<object[], object> function)
         {
             _lock.EnterWriteLock();
@@ -127,7 +76,6 @@ namespace ScriptEngine
         public dynamic Run(string expression)
         {
             Func<string, Func<object[], object>> getFunction = null;
-
             _lock.EnterReadLock();
             try
             {                
@@ -170,10 +118,8 @@ namespace ScriptEngine
             {
                 _lock.ExitWriteLock();
             }
-
             _lock.Dispose();
         }
-
         private void RaiseError(Exception exception)
         {
             EventHandler<ErrorEventArgs> handler;
@@ -199,12 +145,4 @@ namespace ScriptEngine
             }
         }
     }
-    public static class ScriptEngineFactory
-    {
-        public static IScriptExecutor Create()
-        {
-            return ScriptExecutor.Instance;
-        }
-    }
-    #endregion
 }
