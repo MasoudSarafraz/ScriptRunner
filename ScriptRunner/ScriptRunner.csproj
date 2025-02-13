@@ -5,12 +5,13 @@
 	<GeneratePackageOnBuild>True</GeneratePackageOnBuild>
 	<AssemblyVersion></AssemblyVersion>
 	<FileVersion></FileVersion>
-	<Version>03.11.20.4</Version>
+	<Version>03.11.21.4</Version>
 	<RepositoryUrl>https://github.com/MasoudSarafraz/ScriptRunner.git</RepositoryUrl>
 	<Description>Execution of thread-safe custom scripts, only definition of methods that are written in C# language
 Made by Masoud Sarafraz</Description>
 	<PackageId>ScriptRunner.Engine</PackageId>
 	<PackageProjectUrl></PackageProjectUrl>
+	<Authors>Masoud Sarafraz</Authors>
 	</PropertyGroup>
 
 	<ItemGroup>
