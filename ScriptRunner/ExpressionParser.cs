@@ -8,7 +8,7 @@ using System.Text;
 
 namespace ScriptEngine
 {
-    public class AdvancedExpressionParser
+    public class ExpressionParser
     {
         private readonly string _expression;
         private int _position;
@@ -16,10 +16,7 @@ namespace ScriptEngine
         private readonly ConcurrentDictionary<string, object> _variables;
         private readonly Dictionary<string, object> _localVariables;
         private readonly Stack<Dictionary<string, object>> _scopeStack;
-
-        public AdvancedExpressionParser(string expression,
-            ConcurrentDictionary<string, Func<object[], object>> functions,
-            ConcurrentDictionary<string, object> variables)
+        public ExpressionParser(string expression, ConcurrentDictionary<string, Func<object[], object>> functions, ConcurrentDictionary<string, object> variables)
         {
             _expression = expression?.Trim() ?? "";
             _position = 0;
@@ -28,7 +25,6 @@ namespace ScriptEngine
             _localVariables = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
             _scopeStack = new Stack<Dictionary<string, object>>();
         }
-
         public object Evaluate()
         {
             PushScope();
@@ -69,7 +65,6 @@ namespace ScriptEngine
         {
             return ParseAssignment();
         }
-
         private object ParseAssignment()
         {
             // بررسی برای تعریف متغیر (var x = 10)
@@ -142,7 +137,6 @@ namespace ScriptEngine
 
             return left;
         }
-
         private object ParseLogicalOr()
         {
             var left = ParseLogicalAnd();
@@ -155,7 +149,6 @@ namespace ScriptEngine
 
             return left;
         }
-
         private object ParseLogicalAnd()
         {
             var left = ParseBitwiseOr();
@@ -471,7 +464,6 @@ namespace ScriptEngine
 
             throw new FormatException($"Invalid number format: '{numberStr}'");
         }
-
         private string ParseString()
         {
             char quoteChar = _expression[_position];

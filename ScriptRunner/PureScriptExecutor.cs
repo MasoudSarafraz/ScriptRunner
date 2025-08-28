@@ -6,9 +6,9 @@ using System.Threading;
 
 namespace ScriptEngine
 {
-    public class ScriptExecutor2
+    public class PureScriptExecutor
     {
-        private static readonly Lazy<ScriptExecutor2> _instance = new Lazy<ScriptExecutor2>(() => new ScriptExecutor2());
+        private static readonly Lazy<PureScriptExecutor> _instance = new Lazy<PureScriptExecutor>(() => new PureScriptExecutor());
         private readonly ConcurrentDictionary<string, Func<object[], object>> _globalFunctions;
         private readonly ThreadLocal<ConcurrentDictionary<string, Func<object[], object>>> _threadLocalFunctions;
         private readonly ConcurrentDictionary<string, object> _globalVariables;
@@ -43,7 +43,7 @@ namespace ScriptEngine
             }
         }
 
-        public ScriptExecutor2()
+        public PureScriptExecutor()
         {
             _globalFunctions = new ConcurrentDictionary<string, Func<object[], object>>(StringComparer.OrdinalIgnoreCase);
             _threadLocalFunctions = new ThreadLocal<ConcurrentDictionary<string, Func<object[], object>>>(() =>
@@ -393,7 +393,7 @@ namespace ScriptEngine
             }
             try
             {
-                var parser = new AdvancedExpressionParser(expression, combinedFunctions, combinedVariables);
+                var parser = new ExpressionParser(expression, combinedFunctions, combinedVariables);
                 return parser.Evaluate();
             }
             catch (Exception ex)
