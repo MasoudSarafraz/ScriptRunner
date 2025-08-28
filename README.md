@@ -1,7 +1,9 @@
-## Thread-Safe Script Runner
+# ScriptEngine – README
 
-*This is a Thread-Safe Script Runner For Excecute All Type Of Script By Writing C# Code Only*
-*This package supports all mathematical functions by default and there is no need to define them*
+`ScriptEngine` is a **thread-safe, high-performance C# expression evaluator**
+It allows you to **inject global or thread-local custom functions**, evaluate arbitrary mathematical / logical expressions at run-time, and receive rich error feedback – all without ever touching the original source code.
+
+---
 
 ## Create new Instance of Engine
 
