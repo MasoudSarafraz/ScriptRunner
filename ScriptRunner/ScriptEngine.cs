@@ -14,7 +14,6 @@ namespace ScriptEngine
         private readonly ConcurrentDictionary<string, Func<object[], object>> _globalFunctions;
         // توابع مخصوص هر thread
         private readonly ThreadLocal<ConcurrentDictionary<string, Func<object[], object>>> _threadLocalFunctions;
-
         private readonly ReaderWriterLockSlim _lock = new ReaderWriterLockSlim(LockRecursionPolicy.NoRecursion);
         private EventHandler<ErrorEventArgs> _onError;
         public event EventHandler<ErrorEventArgs> OnError
@@ -47,43 +46,41 @@ namespace ScriptEngine
         private ScriptExecutor()
         {
             _globalFunctions = new ConcurrentDictionary<string, Func<object[], object>>(StringComparer.OrdinalIgnoreCase);
-            _threadLocalFunctions = new ThreadLocal<ConcurrentDictionary<string, Func<object[], object>>>(() =>
-                new ConcurrentDictionary<string, Func<object[], object>>(StringComparer.OrdinalIgnoreCase));
-
+            _threadLocalFunctions = new ThreadLocal<ConcurrentDictionary<string, Func<object[], object>>>(() => new ConcurrentDictionary<string, Func<object[], object>>(StringComparer.OrdinalIgnoreCase));
             // Add Default Global Functions
-            AddGlobalFunction("iif", parameters =>
-            {
-                if (parameters.Length != 3)
-                {
-                    throw new ArgumentException("iif requires exactly three parameters");
-                }
+            //AddGlobalFunction("iif", parameters =>
+            //{
+            //    if (parameters.Length != 3)
+            //    {
+            //        throw new ArgumentException("iif requires exactly three parameters");
+            //    }
 
-                bool condition = false;
-                try
-                {
-                    condition = Convert.ToBoolean(parameters[0]);
-                }
-                catch (Exception ex)
-                {
-                    throw new ArgumentException("First parameter of iif must be a boolean value", ex);
-                }
+            //    bool condition = false;
+            //    try
+            //    {
+            //        condition = Convert.ToBoolean(parameters[0]);
+            //    }
+            //    catch (Exception ex)
+            //    {
+            //        throw new ArgumentException("First parameter of iif must be a boolean value", ex);
+            //    }
 
-                return condition ? parameters[1] : parameters[2];
-            });
+            //    return condition ? parameters[1] : parameters[2];
+            //});
 
-            AddGlobalFunction("coalesce", parameters =>
-            {
-                if (parameters.Length == 0)
-                    return null;
+            //AddGlobalFunction("coalesce", parameters =>
+            //{
+            //    if (parameters.Length == 0)
+            //        return null;
 
-                foreach (var param in parameters)
-                {
-                    if (param != null)
-                        return param;
-                }
+            //    foreach (var param in parameters)
+            //    {
+            //        if (param != null)
+            //            return param;
+            //    }
 
-                return parameters[parameters.Length - 1];
-            });
+            //    return parameters[parameters.Length - 1];
+            //});
         }
         public static IScriptExecutor Instance => _instance.Value;
         // متد برای افزودن تابع عمومی (اشتراکی بین تمام threadها)
@@ -91,10 +88,8 @@ namespace ScriptEngine
         {
             if (string.IsNullOrWhiteSpace(name))
                 throw new ArgumentException("Function name cannot be null or empty", nameof(name));
-
             if (function == null)
                 throw new ArgumentNullException(nameof(function));
-
             _lock.EnterWriteLock();
             try
             {
@@ -110,10 +105,8 @@ namespace ScriptEngine
         {
             if (string.IsNullOrWhiteSpace(name))
                 throw new ArgumentException("Function name cannot be null or empty", nameof(name));
-
             if (function == null)
                 throw new ArgumentNullException(nameof(function));
-
             var localFunctions = _threadLocalFunctions.Value;
             localFunctions.AddOrUpdate(name, function, (key, oldValue) => function);
         }
@@ -127,7 +120,6 @@ namespace ScriptEngine
         {
             if (string.IsNullOrWhiteSpace(name))
                 return false;
-
             _lock.EnterWriteLock();
             try
             {
@@ -143,8 +135,9 @@ namespace ScriptEngine
         public bool RemoveLocalThreadFunction(string name)
         {
             if (string.IsNullOrWhiteSpace(name))
+            {
                 return false;
-
+            }
             var localFunctions = _threadLocalFunctions.Value;
             Func<object[], object> removedFunction;
             return localFunctions.TryRemove(name, out removedFunction);
@@ -205,17 +198,16 @@ namespace ScriptEngine
         {
             var globalFunctions = GetGlobalFunctionList();
             var localFunctions = GetLocalThreadFunctionList();
-
             return globalFunctions.Concat(localFunctions).Distinct().ToList();
         }
         public dynamic Run(string expression)
         {
             if (string.IsNullOrWhiteSpace(expression))
+            {
                 return null;
-
+            }
             // ترکیب توابع عمومی و توابع مخصوص thread جاری
             var combinedFunctions = new ConcurrentDictionary<string, Func<object[], object>>(StringComparer.OrdinalIgnoreCase);
-
             // اضافه کردن توابع عمومی
             _lock.EnterReadLock();
             try
@@ -229,14 +221,12 @@ namespace ScriptEngine
             {
                 _lock.ExitReadLock();
             }
-
             // اضافه کردن توابع مخصوص thread جاری (با اولویت بالاتر)
             var localFunctions = _threadLocalFunctions.Value;
             foreach (var func in localFunctions)
             {
                 combinedFunctions.AddOrUpdate(func.Key, func.Value, (key, oldValue) => func.Value);
             }
-
             try
             {
                 var expr = new Expression(expression);
@@ -258,7 +248,6 @@ namespace ScriptEngine
                         throw new Exception($"Function '{name}' is not defined");
                     }
                 };
-
                 return expr.Evaluate();
             }
             catch (Exception ex)
@@ -279,7 +268,6 @@ namespace ScriptEngine
         private void RaiseError(Exception exception)
         {
             var handler = _onError;
-
             if (handler != null)
             {
                 try
@@ -288,7 +276,7 @@ namespace ScriptEngine
                 }
                 catch
                 {
-                    // Prevent event subscriber exceptions from crashing the application
+                    // Ignore
                 }
             }
             else
@@ -303,7 +291,7 @@ namespace ScriptEngine
                 }
                 catch
                 {
-                    // Fallback if console is not available
+                    // Ignore Exception
                 }
             }
         }
