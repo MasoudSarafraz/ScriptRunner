@@ -1,22 +1,28 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
 	<PropertyGroup>
-	<!--<TargetFrameworks>netstandard2.0;net4;net8</TargetFrameworks>-->
-	<TargetFrameworks>net8.0;net7.0;net6.0;net5.0;netcoreapp3.1;netcoreapp3.0;netcoreapp2.1;netcoreapp2.0;net48;net472;net471;net47;net462;net461;net46;net452;net451;net45;net4;netstandard2.0;</TargetFrameworks>
-	<GeneratePackageOnBuild>True</GeneratePackageOnBuild>
-	<AssemblyVersion></AssemblyVersion>
-	<FileVersion></FileVersion>
-	<Version>03.11.21.5</Version>
-	<RepositoryUrl>https://github.com/MasoudSarafraz/ScriptRunner.git</RepositoryUrl>
-	<Description>Execution of thread-safe custom scripts, only definition of methods that are written in C# language
-Made by Masoud Sarafraz</Description>
-	<PackageId>ScriptRunner.Engine</PackageId>
-	<PackageProjectUrl></PackageProjectUrl>
-	<Authors>Masoud Sarafraz</Authors>
+		<TargetFrameworks>net40;netstandard2.0</TargetFrameworks>
+		<GeneratePackageOnBuild>True</GeneratePackageOnBuild>
+		<AssemblyVersion>3.11.21.5</AssemblyVersion>
+		<FileVersion>3.11.21.5</FileVersion>
+		<Version>3.11.21</Version>
+		<RepositoryUrl>https://github.com/MasoudSarafraz/ScriptRunner.git</RepositoryUrl>
+		<Description>
+			Execution of thread-safe custom scripts, only definition of methods that are written in C# language
+			Made by Masoud Sarafraz
+		</Description>
+		<PackageId>ScriptRunner.Engine</PackageId>
+		<PackageProjectUrl>https://github.com/MasoudSarafraz/ScriptRunner</PackageProjectUrl>
+		<Authors>Masoud Sarafraz</Authors>
+		<PackageTags>scripting;engine;csharp</PackageTags>
 	</PropertyGroup>
-
 	<ItemGroup>
 		<PackageReference Include="ncalc" Version="1.3.8" />
 	</ItemGroup>
-
+	<ItemGroup Condition="'$(TargetFramework)' == 'net4'">
+		
+	</ItemGroup>
+	<ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
+		
+	</ItemGroup>
 </Project>
