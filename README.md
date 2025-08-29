@@ -10,7 +10,8 @@ It allows you to **inject global or thread-local custom functions**, evaluate ar
 ```
 using ScriptEngine;
 
-var engine = ScriptEngineFactory.Create();
+var engine = ScriptEngineFactory.Create();// this instance use Ncalc package for calculation
+var engine = ScriptEngineFactory.CreateLocalScriptEngine();// this instance use fast local parser for calculation
 ```
 ## Add Custome Function
 
