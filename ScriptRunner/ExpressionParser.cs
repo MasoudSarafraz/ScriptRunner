@@ -8,7 +8,7 @@ using System.Text;
 
 namespace ScriptEngine
 {
-    public class ExpressionParser
+    internal sealed class ScriptParser
     {
         private readonly string _expression;
         private int _position;
@@ -16,7 +16,7 @@ namespace ScriptEngine
         private readonly ConcurrentDictionary<string, object> _variables;
         private readonly Dictionary<string, object> _localVariables;
         private readonly Stack<Dictionary<string, object>> _scopeStack;
-        public ExpressionParser(string expression, ConcurrentDictionary<string, Func<object[], object>> functions, ConcurrentDictionary<string, object> variables)
+        public ScriptParser(string expression, ConcurrentDictionary<string, Func<object[], object>> functions, ConcurrentDictionary<string, object> variables)
         {
             _expression = expression?.Trim() ?? "";
             _position = 0;

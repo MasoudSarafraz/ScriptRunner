@@ -6,9 +6,9 @@ using System.Threading;
 
 namespace ScriptEngine
 {
-    public class PureScriptExecutor
+    internal sealed class LocalScriptExecutor : IScriptExecutor
     {
-        private static readonly Lazy<PureScriptExecutor> _instance = new Lazy<PureScriptExecutor>(() => new PureScriptExecutor());
+        private static readonly Lazy<LocalScriptExecutor> _instance = new Lazy<LocalScriptExecutor>(() => new LocalScriptExecutor());
         private readonly ConcurrentDictionary<string, Func<object[], object>> _globalFunctions;
         private readonly ThreadLocal<ConcurrentDictionary<string, Func<object[], object>>> _threadLocalFunctions;
         private readonly ConcurrentDictionary<string, object> _globalVariables;
@@ -43,7 +43,7 @@ namespace ScriptEngine
             }
         }
 
-        public PureScriptExecutor()
+        private LocalScriptExecutor()
         {
             _globalFunctions = new ConcurrentDictionary<string, Func<object[], object>>(StringComparer.OrdinalIgnoreCase);
             _threadLocalFunctions = new ThreadLocal<ConcurrentDictionary<string, Func<object[], object>>>(() =>
@@ -132,7 +132,7 @@ namespace ScriptEngine
                    value is float || value is double || value is decimal;
         }
 
-        //public static IScriptExecutor Instance => _instance.Value;
+        public static IScriptExecutor Instance => _instance.Value;
 
         public void AddGlobalFunction(string name, Func<object[], object> function)
         {
@@ -153,7 +153,7 @@ namespace ScriptEngine
             }
         }
 
-        public void AddThreadLocalFunction(string name, Func<object[], object> function)
+        public void AddLocalThreadFunction(string name, Func<object[], object> function)
         {
             if (string.IsNullOrWhiteSpace(name))
                 throw new ArgumentException("Function name cannot be null or empty", nameof(name));
@@ -167,7 +167,7 @@ namespace ScriptEngine
 
         public void AddCustomFunction(string name, Func<object[], object> function)
         {
-            AddThreadLocalFunction(name, function);
+            AddLocalThreadFunction(name, function);
         }
 
         public bool RemoveGlobalFunction(string name)
@@ -187,7 +187,7 @@ namespace ScriptEngine
             }
         }
 
-        public bool RemoveThreadLocalFunction(string name)
+        public bool RemoveLocalThreadFunction(string name)
         {
             if (string.IsNullOrWhiteSpace(name))
                 return false;
@@ -199,7 +199,7 @@ namespace ScriptEngine
 
         public bool RemoveCustomFunction(string name)
         {
-            return RemoveThreadLocalFunction(name);
+            return RemoveLocalThreadFunction(name);
         }
 
         public void ClearGlobalFunctions()
@@ -239,7 +239,7 @@ namespace ScriptEngine
             }
         }
 
-        public int GetThreadLocalFunctionCount()
+        public int GetLocalThreadFunctionCount()
         {
             var localFunctions = _threadLocalFunctions.Value;
             return localFunctions.Count;
@@ -247,7 +247,7 @@ namespace ScriptEngine
 
         public int GetCustomFunctionCount()
         {
-            return GetThreadLocalFunctionCount();
+            return GetLocalThreadFunctionCount();
         }
 
         public List<string> GetGlobalFunctionList()
@@ -263,7 +263,7 @@ namespace ScriptEngine
             }
         }
 
-        public List<string> GetThreadLocalFunctionList()
+        public List<string> GetLocalThreadFunctionList()
         {
             var localFunctions = _threadLocalFunctions.Value;
             return localFunctions.Keys.ToList();
@@ -271,13 +271,13 @@ namespace ScriptEngine
 
         public List<string> GetCustomFunctionList()
         {
-            return GetThreadLocalFunctionList();
+            return GetLocalThreadFunctionList();
         }
 
         public List<string> GetAllFunctionList()
         {
             var globalFunctions = GetGlobalFunctionList();
-            var localFunctions = GetThreadLocalFunctionList();
+            var localFunctions = GetLocalThreadFunctionList();
 
             return globalFunctions.Concat(localFunctions).Distinct().ToList();
         }
@@ -342,7 +342,7 @@ namespace ScriptEngine
             return localVariables.TryGetValue(name, out object value) ? value : null;
         }
 
-        public bool RemoveThreadLocalVariable(string name)
+        public bool RemoveLocalThreadVariable(string name)
         {
             if (string.IsNullOrWhiteSpace(name))
                 return false;
@@ -393,7 +393,7 @@ namespace ScriptEngine
             }
             try
             {
-                var parser = new ExpressionParser(expression, combinedFunctions, combinedVariables);
+                var parser = new ScriptParser(expression, combinedFunctions, combinedVariables);
                 return parser.Evaluate();
             }
             catch (Exception ex)
@@ -444,6 +444,13 @@ namespace ScriptEngine
                 }
             }
         }
+
+        public void ClearLocalThreadFunctions()
+        {
+            var localFunctions = _threadLocalFunctions.Value;
+            localFunctions.Clear();
+        }
+
     }
 
 }
