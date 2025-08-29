@@ -1,4 +1,4 @@
-# ScriptEngine – README
+# ScriptEngine
 
 `ScriptEngine` is a **thread-safe, high-performance C# expression evaluator**
 It allows you to **inject global or thread-local custom functions**, evaluate arbitrary mathematical / logical expressions at run-time, and receive rich error feedback – all without ever touching the original source code.
