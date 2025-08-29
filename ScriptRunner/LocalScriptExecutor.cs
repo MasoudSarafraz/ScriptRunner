@@ -46,13 +46,9 @@ namespace ScriptEngine
         private LocalScriptExecutor()
         {
             _globalFunctions = new ConcurrentDictionary<string, Func<object[], object>>(StringComparer.OrdinalIgnoreCase);
-            _threadLocalFunctions = new ThreadLocal<ConcurrentDictionary<string, Func<object[], object>>>(() =>
-                new ConcurrentDictionary<string, Func<object[], object>>(StringComparer.OrdinalIgnoreCase));
-
+            _threadLocalFunctions = new ThreadLocal<ConcurrentDictionary<string, Func<object[], object>>>(() => new ConcurrentDictionary<string, Func<object[], object>>(StringComparer.OrdinalIgnoreCase));
             _globalVariables = new ConcurrentDictionary<string, object>(StringComparer.OrdinalIgnoreCase);
-            _threadLocalVariables = new ThreadLocal<ConcurrentDictionary<string, object>>(() =>
-                new ConcurrentDictionary<string, object>(StringComparer.OrdinalIgnoreCase));
-
+            _threadLocalVariables = new ThreadLocal<ConcurrentDictionary<string, object>>(() => new ConcurrentDictionary<string, object>(StringComparer.OrdinalIgnoreCase));
             AddDefaultFunctions();
             AddDefaultConstants();
         }
@@ -108,11 +104,9 @@ namespace ScriptEngine
                 parameters[0] is IEnumerable<object> enumerable ? enumerable.Count() : 1);
             AddGlobalFunction("sum", parameters => parameters[0] is Array array ? array.Cast<object>().Sum(item => Convert.ToDouble(item)) : parameters.Sum(p => Convert.ToDouble(p)));
             AddGlobalFunction("avg", parameters =>
-                parameters[0] is Array array ? array.Cast<object>().Average(item => Convert.ToDouble(item)) :
-                parameters.Average(p => Convert.ToDouble(p)));
+                parameters[0] is Array array ? array.Cast<object>().Average(item => Convert.ToDouble(item)) : parameters.Average(p => Convert.ToDouble(p)));
             AddGlobalFunction("min", parameters => parameters[0] is Array array ? array.Cast<object>().Min(item => Convert.ToDouble(item)) : parameters.Min(p => Convert.ToDouble(p)));
-            AddGlobalFunction("max", parameters =>
-                parameters[0] is Array array ? array.Cast<object>().Max(item => Convert.ToDouble(item)) :
+            AddGlobalFunction("max", parameters => parameters[0] is Array array ? array.Cast<object>().Max(item => Convert.ToDouble(item)) :
                 parameters.Max(p => Convert.ToDouble(p)));
         }
 
@@ -137,8 +131,9 @@ namespace ScriptEngine
         public void AddGlobalFunction(string name, Func<object[], object> function)
         {
             if (string.IsNullOrWhiteSpace(name))
+            {
                 throw new ArgumentException("Function name cannot be null or empty", nameof(name));
-
+            }
             if (function == null)
                 throw new ArgumentNullException(nameof(function));
 
@@ -156,8 +151,9 @@ namespace ScriptEngine
         public void AddLocalThreadFunction(string name, Func<object[], object> function)
         {
             if (string.IsNullOrWhiteSpace(name))
+            {
                 throw new ArgumentException("Function name cannot be null or empty", nameof(name));
-
+            }
             if (function == null)
                 throw new ArgumentNullException(nameof(function));
 
@@ -278,15 +274,15 @@ namespace ScriptEngine
         {
             var globalFunctions = GetGlobalFunctionList();
             var localFunctions = GetLocalThreadFunctionList();
-
             return globalFunctions.Concat(localFunctions).Distinct().ToList();
         }
 
         public void SetGlobalVariable(string name, object value)
         {
             if (string.IsNullOrWhiteSpace(name))
-                throw new ArgumentException("Variable name cannot be null or empty", nameof(name));
-
+            {
+                throw new ArgumentException("Function name cannot be null or empty", nameof(name));
+            }
             _lock.EnterWriteLock();
             try
             {
@@ -331,7 +327,6 @@ namespace ScriptEngine
         {
             if (string.IsNullOrWhiteSpace(name))
                 throw new ArgumentException("Variable name cannot be null or empty", nameof(name));
-
             var localVariables = _threadLocalVariables.Value;
             localVariables.AddOrUpdate(name, value, (key, oldValue) => value);
         }
@@ -356,7 +351,7 @@ namespace ScriptEngine
             if (string.IsNullOrWhiteSpace(expression))
             {
                 return null;
-            }                
+            }
             // ترکیب توابع و متغیرهای عمومی و thread-local
             var combinedFunctions = new ConcurrentDictionary<string, Func<object[], object>>(StringComparer.OrdinalIgnoreCase);
             var combinedVariables = new ConcurrentDictionary<string, object>(StringComparer.OrdinalIgnoreCase);
