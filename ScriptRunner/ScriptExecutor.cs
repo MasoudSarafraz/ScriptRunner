@@ -16,6 +16,19 @@ namespace ScriptEngine
         private readonly ThreadLocal<ConcurrentDictionary<string, Func<object[], object>>> _threadLocalFunctions;
         private readonly ReaderWriterLockSlim _lock = new ReaderWriterLockSlim(LockRecursionPolicy.NoRecursion);
         private EventHandler<ErrorEventArgs> _onError;
+
+        // B35: Global unhandled error handler (static, overrides console output)
+        private static volatile Action<Exception> _globalUnhandledErrorHandler;
+
+        /// <summary>
+        /// Gets or sets a global handler for unhandled errors when no OnError subscriber is attached.
+        /// If null (default), errors are written to Console.Error.
+        /// </summary>
+        public static Action<Exception> GlobalUnhandledErrorHandler
+        {
+            get => _globalUnhandledErrorHandler;
+            set => _globalUnhandledErrorHandler = value;
+        }
         public event EventHandler<ErrorEventArgs> OnError
         {
             add
@@ -257,14 +270,32 @@ namespace ScriptEngine
             }
         }
 
+        // B6, B16: Safe Dispose - does not kill singleton resources
+        // Clears only the current thread's local state.
+        // Global functions and singleton infrastructure are preserved.
         public void Dispose()
         {
-            _onError = null;
-            _globalFunctions.Clear();
-            _threadLocalFunctions.Dispose();
-            _lock.Dispose();
+            _lock.EnterWriteLock();
+            try
+            {
+                _onError = null;
+            }
+            finally
+            {
+                _lock.ExitWriteLock();
+            }
+
+            // Clear thread-local state for the current thread only
+            // Note: For singleton executor, global state and shared infrastructure
+            // (ThreadLocal, locks) are NOT disposed to keep the singleton usable.
+            if (_threadLocalFunctions.IsValueCreated)
+            {
+                try { _threadLocalFunctions.Value.Clear(); }
+                catch { /* ignore */ }
+            }
         }
 
+        // B35: Use global handler if set, otherwise console
         private void RaiseError(Exception exception)
         {
             var handler = _onError;
@@ -281,17 +312,32 @@ namespace ScriptEngine
             }
             else
             {
-                try
+                var global = _globalUnhandledErrorHandler;
+                if (global != null)
                 {
-                    Console.Error.WriteLine($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] [Unhandled Error] {exception.Message}");
-                    if (exception.InnerException != null)
+                    try
                     {
-                        Console.Error.WriteLine($"Inner Exception: {exception.InnerException.Message}");
+                        global(exception);
+                    }
+                    catch
+                    {
+                        // Ignore
                     }
                 }
-                catch
+                else
                 {
-                    // Ignore Exception
+                    try
+                    {
+                        Console.Error.WriteLine($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] [Unhandled Error] {exception.Message}");
+                        if (exception.InnerException != null)
+                        {
+                            Console.Error.WriteLine($"Inner Exception: {exception.InnerException.Message}");
+                        }
+                    }
+                    catch
+                    {
+                        // Ignore Exception
+                    }
                 }
             }
         }

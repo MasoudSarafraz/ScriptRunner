@@ -15,6 +15,20 @@ namespace ScriptEngine
         private readonly ThreadLocal<ConcurrentDictionary<string, object>> _threadLocalVariables;
         private readonly ReaderWriterLockSlim _lock = new ReaderWriterLockSlim(LockRecursionPolicy.NoRecursion);
         private EventHandler<ErrorEventArgs> _onError;
+
+        // B35: Global unhandled error handler (static, overrides console output)
+        private static volatile Action<Exception> _globalUnhandledErrorHandler;
+
+        /// <summary>
+        /// Gets or sets a global handler for unhandled errors when no OnError subscriber is attached.
+        /// If null (default), errors are written to Console.Error.
+        /// </summary>
+        public static Action<Exception> GlobalUnhandledErrorHandler
+        {
+            get => _globalUnhandledErrorHandler;
+            set => _globalUnhandledErrorHandler = value;
+        }
+
         public event EventHandler<ErrorEventArgs> OnError
         {
             add
@@ -78,7 +92,12 @@ namespace ScriptEngine
             AddGlobalFunction("atan", parameters => Math.Atan(Convert.ToDouble(parameters[0])));
             AddGlobalFunction("atan2", parameters => Math.Atan2(Convert.ToDouble(parameters[0]), Convert.ToDouble(parameters[1])));
             // توابع رشته‌ای
-            AddGlobalFunction("length", parameters => parameters[0] is string str ? str.Length : ((Array)parameters[0]).Length);
+            // B21: Handle null input for length
+            AddGlobalFunction("length", parameters =>
+            {
+                if (parameters[0] == null) return 0;
+                return parameters[0] is string str ? str.Length : ((Array)parameters[0]).Length;
+            });
             AddGlobalFunction("substring", parameters => ((string)parameters[0]).Substring(Convert.ToInt32(parameters[1]), parameters.Length > 2 ? Convert.ToInt32(parameters[2]) : ((string)parameters[0]).Length - Convert.ToInt32(parameters[1])));
             AddGlobalFunction("toupper", parameters => ((string)parameters[0]).ToUpper());
             AddGlobalFunction("tolower", parameters => ((string)parameters[0]).ToLower());
@@ -92,22 +111,64 @@ namespace ScriptEngine
             AddGlobalFunction("day", parameters => ((DateTime)parameters[0]).Day);
 
             // توابع شرطی
-            AddGlobalFunction("iif", parameters => Convert.ToBoolean(parameters[0]) ? parameters[1] : parameters[2]);
+            // B23: Validate parameter count for iif
+            AddGlobalFunction("iif", parameters =>
+            {
+                if (parameters.Length != 3)
+                    throw new ArgumentException("iif requires exactly three parameters");
+                return Convert.ToBoolean(parameters[0]) ? parameters[1] : parameters[2];
+            });
             AddGlobalFunction("coalesce", parameters => parameters.FirstOrDefault(p => p != null) ?? parameters[parameters.Length - 1]);
             AddGlobalFunction("isnull", parameters => parameters[0] == null);
             AddGlobalFunction("isnumber", parameters => IsNumber(parameters[0]));
             AddGlobalFunction("isstring", parameters => parameters[0] is string);
             // توابع آرایه
             AddGlobalFunction("array", parameters => parameters);
+            // B28: Throw on non-array input instead of returning 1
             AddGlobalFunction("count", parameters =>
-                parameters[0] is Array array ? array.Length :
-                parameters[0] is IEnumerable<object> enumerable ? enumerable.Count() : 1);
-            AddGlobalFunction("sum", parameters => parameters[0] is Array array ? array.Cast<object>().Sum(item => Convert.ToDouble(item)) : parameters.Sum(p => Convert.ToDouble(p)));
+            {
+                if (parameters[0] is Array array) return array.Length;
+                if (parameters[0] is IEnumerable<object> enumerable) return enumerable.Count();
+                throw new ArgumentException("count() requires an array or enumerable");
+            });
+            // B22: Handle empty arrays for aggregate functions
+            AddGlobalFunction("sum", parameters =>
+            {
+                if (parameters[0] is Array array)
+                {
+                    if (array.Length == 0) return 0;
+                    return array.Cast<object>().Sum(item => Convert.ToDouble(item));
+                }
+                return parameters.Sum(p => Convert.ToDouble(p));
+            });
             AddGlobalFunction("avg", parameters =>
-                parameters[0] is Array array ? array.Cast<object>().Average(item => Convert.ToDouble(item)) : parameters.Average(p => Convert.ToDouble(p)));
-            AddGlobalFunction("min", parameters => parameters[0] is Array array ? array.Cast<object>().Min(item => Convert.ToDouble(item)) : parameters.Min(p => Convert.ToDouble(p)));
-            AddGlobalFunction("max", parameters => parameters[0] is Array array ? array.Cast<object>().Max(item => Convert.ToDouble(item)) :
-                parameters.Max(p => Convert.ToDouble(p)));
+            {
+                if (parameters[0] is Array array)
+                {
+                    if (array.Length == 0) throw new InvalidOperationException("Cannot compute average of empty array");
+                    return array.Cast<object>().Average(item => Convert.ToDouble(item));
+                }
+                if (parameters.Length == 0) throw new InvalidOperationException("Cannot compute average of empty input");
+                return parameters.Average(p => Convert.ToDouble(p));
+            });
+            AddGlobalFunction("min", parameters =>
+            {
+                if (parameters[0] is Array array)
+                {
+                    if (array.Length == 0) throw new InvalidOperationException("Cannot compute minimum of empty array");
+                    return array.Cast<object>().Min(item => Convert.ToDouble(item));
+                }
+                return parameters.Min(p => Convert.ToDouble(p));
+            });
+            AddGlobalFunction("max", parameters =>
+            {
+                if (parameters[0] is Array array)
+                {
+                    if (array.Length == 0) throw new InvalidOperationException("Cannot compute maximum of empty array");
+                    return array.Cast<object>().Max(item => Convert.ToDouble(item));
+                }
+                return parameters.Max(p => Convert.ToDouble(p));
+            });
         }
 
         private void AddDefaultConstants()
@@ -281,7 +342,7 @@ namespace ScriptEngine
         {
             if (string.IsNullOrWhiteSpace(name))
             {
-                throw new ArgumentException("Function name cannot be null or empty", nameof(name));
+                throw new ArgumentException("Variable name cannot be null or empty", nameof(name));
             }
             _lock.EnterWriteLock();
             try
@@ -346,6 +407,34 @@ namespace ScriptEngine
             return localVariables.TryRemove(name, out _);
         }
 
+        // B7: Callback for parser to propagate variable changes back to executor
+        private void SetVariableFromParser(string name, object value)
+        {
+            var locals = _threadLocalVariables.Value;
+            if (locals.ContainsKey(name))
+            {
+                locals.AddOrUpdate(name, value, (k, old) => value);
+                return;
+            }
+
+            if (_globalVariables.ContainsKey(name))
+            {
+                _lock.EnterWriteLock();
+                try
+                {
+                    _globalVariables.AddOrUpdate(name, value, (k, old) => value);
+                }
+                finally
+                {
+                    _lock.ExitWriteLock();
+                }
+                return;
+            }
+
+            // New variable: create as thread-local
+            locals.AddOrUpdate(name, value, (k, old) => value);
+        }
+
         public dynamic Run(string expression)
         {
             if (string.IsNullOrWhiteSpace(expression))
@@ -388,7 +477,8 @@ namespace ScriptEngine
             }
             try
             {
-                var parser = new ScriptParser(expression, combinedFunctions, combinedVariables);
+                // B7: Pass callback so var declarations and assignments persist
+                var parser = new ScriptParser(expression, combinedFunctions, combinedVariables, SetVariableFromParser);
                 return parser.Evaluate();
             }
             catch (Exception ex)
@@ -398,16 +488,37 @@ namespace ScriptEngine
             }
         }
 
+        // B6, B16: Safe Dispose - does not kill singleton resources
+        // Clears only the current thread's local state.
+        // Global functions/variables and singleton infrastructure are preserved.
         public void Dispose()
         {
-            _onError = null;
-            _globalFunctions.Clear();
-            _globalVariables.Clear();
-            _threadLocalFunctions.Dispose();
-            _threadLocalVariables.Dispose();
-            _lock.Dispose();
+            _lock.EnterWriteLock();
+            try
+            {
+                _onError = null;
+            }
+            finally
+            {
+                _lock.ExitWriteLock();
+            }
+
+            // Clear thread-local state for the current thread only
+            // Note: For singleton executor, global state and shared infrastructure
+            // (ThreadLocal, locks) are NOT disposed to keep the singleton usable.
+            if (_threadLocalFunctions.IsValueCreated)
+            {
+                try { _threadLocalFunctions.Value.Clear(); }
+                catch { /* ignore */ }
+            }
+            if (_threadLocalVariables.IsValueCreated)
+            {
+                try { _threadLocalVariables.Value.Clear(); }
+                catch { /* ignore */ }
+            }
         }
 
+        // B35: Use global handler if set, otherwise console
         private void RaiseError(Exception exception)
         {
             var handler = _onError;
@@ -425,17 +536,32 @@ namespace ScriptEngine
             }
             else
             {
-                try
+                var global = _globalUnhandledErrorHandler;
+                if (global != null)
                 {
-                    Console.Error.WriteLine($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] [Unhandled Error] {exception.Message}");
-                    if (exception.InnerException != null)
+                    try
                     {
-                        Console.Error.WriteLine($"Inner Exception: {exception.InnerException.Message}");
+                        global(exception);
+                    }
+                    catch
+                    {
+                        // Ignore
                     }
                 }
-                catch
+                else
                 {
-                    //Ignore
+                    try
+                    {
+                        Console.Error.WriteLine($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] [Unhandled Error] {exception.Message}");
+                        if (exception.InnerException != null)
+                        {
+                            Console.Error.WriteLine($"Inner Exception: {exception.InnerException.Message}");
+                        }
+                    }
+                    catch
+                    {
+                        //Ignore
+                    }
                 }
             }
         }

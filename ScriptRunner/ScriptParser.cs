@@ -15,161 +15,262 @@ namespace ScriptEngine
         private readonly ConcurrentDictionary<string, Func<object[], object>> _functions;
         private readonly ConcurrentDictionary<string, object> _variables;
         private readonly Dictionary<string, object> _localVariables;
-        private readonly Stack<Dictionary<string, object>> _scopeStack;
+        private readonly Action<string, object> _setVariableCallback;
+        private int _skipDepth;
+
         public ScriptParser(string expression, ConcurrentDictionary<string, Func<object[], object>> functions, ConcurrentDictionary<string, object> variables)
+            : this(expression, functions, variables, null)
+        {
+        }
+
+        public ScriptParser(string expression, ConcurrentDictionary<string, Func<object[], object>> functions, ConcurrentDictionary<string, object> variables, Action<string, object> setVariableCallback)
         {
             _expression = expression?.Trim() ?? "";
             _position = 0;
             _functions = functions;
             _variables = variables;
             _localVariables = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
-            _scopeStack = new Stack<Dictionary<string, object>>();
+            _setVariableCallback = setVariableCallback;
+            _skipDepth = 0;
         }
+
+        private bool IsSkipping => _skipDepth > 0;
+
+        private void BeginSkip() { _skipDepth++; }
+        private void EndSkip() { if (_skipDepth > 0) _skipDepth--; }
+
         public object Evaluate()
         {
-            PushScope();
-            try
+            if (string.IsNullOrEmpty(_expression))
+                return null;
+
+            var result = ParseStatementList();
+            SkipWhitespace();
+
+            if (_position < _expression.Length)
+                throw new FormatException($"Unexpected character at position {_position}: '{_expression[_position]}' in expression: '{_expression}'");
+
+            return result;
+        }
+
+        // B19: Support multiple statements separated by ';'
+        private object ParseStatementList()
+        {
+            object result = ParseExpression();
+
+            while (true)
             {
-                var result = ParseExpression();
                 SkipWhitespace();
+                if (!Match(";"))
+                    break;
 
-                if (_position < _expression.Length)
-                    throw new FormatException($"Unexpected character at position {_position}: '{_expression[_position]}' in expression: '{_expression}'");
+                SkipWhitespace();
+                if (_position >= _expression.Length)
+                    break;
 
-                return result;
+                result = ParseExpression();
             }
-            finally
-            {
-                PopScope();
-            }
-        }
 
-        private void PushScope()
-        {
-            _scopeStack.Push(new Dictionary<string, object>(_localVariables, StringComparer.OrdinalIgnoreCase));
-        }
-
-        private void PopScope()
-        {
-            if (_scopeStack.Count > 0)
-            {
-                _localVariables.Clear();
-                foreach (var item in _scopeStack.Pop())
-                {
-                    _localVariables[item.Key] = item.Value;
-                }
-            }
+            return result;
         }
 
         private object ParseExpression()
         {
             return ParseAssignment();
         }
+
+        // B1: Fixed assignment by peeking identifier before evaluating
+        // B7: var declarations propagate to executor via callback
         private object ParseAssignment()
         {
-            // بررسی برای تعریف متغیر (var x = 10)
-            if (Match("var", true))
+            // var declaration (var x = ...)
+            if (MatchWord("var"))
             {
                 SkipWhitespace();
-                string varName2 = ParseIdentifierName();
+                string varName = ParseIdentifierName();
+                if (string.IsNullOrEmpty(varName))
+                    throw new FormatException("Expected variable name after 'var'");
+
                 SkipWhitespace();
-
-                if (!Match("="))
-                    throw new FormatException("Expected '=' after variable declaration");
-
+                Expect("=");
                 SkipWhitespace();
                 object value = ParseExpression();
-                _localVariables[varName2] = value;
+                SetVariableValue(varName, value);
                 return value;
             }
 
-            // بررسی برای انتساب متغیر (x = 10)
-            var left = ParseConditionalExpression();
+            // Assignment detection: <identifier> = (not ==)
+            int savedPos = _position;
+            string peekedName = TryPeekIdentifier();
 
-            if (Match("=") && left is string varName)
+            if (peekedName != null && !IsKeyword(peekedName))
             {
-                object value = ParseExpression();
-
-                // اولویت با متغیرهای محلی، سپس متغیرهای thread-local، سپس متغیرهای global
-                if (_localVariables.ContainsKey(varName))
+                SkipWhitespace();
+                if (PeekChar() == '=' && PeekChar(1) != '=')
                 {
-                    _localVariables[varName] = value;
+                    _position++; // consume =
+                    SkipWhitespace();
+                    object value = ParseExpression();
+                    SetVariableValue(peekedName, value);
+                    return value;
                 }
-                else if (_variables.ContainsKey(varName))
-                {
-                    _variables[varName] = value;
-                }
-                else
-                {
-                    _localVariables[varName] = value;
-                }
-
-                return value;
             }
 
-            return left;
+            // Not an assignment, restore and parse normally
+            _position = savedPos;
+            return ParseConditionalExpression();
         }
 
+        // B9: Short-circuit evaluation for ternary
         private object ParseConditionalExpression()
         {
             var condition = ParseNullCoalescing();
 
-            if (Match("?"))
+            SkipWhitespace();
+            if (PeekChar() != '?')
+                return condition;
+
+            // Check it's not ??
+            if (PeekChar(1) == '?')
+                return condition;
+
+            _position++; // consume ?
+            SkipWhitespace();
+
+            if (IsSkipping)
+            {
+                ParseExpression();
+                Expect(":");
+                ParseExpression();
+                return null;
+            }
+
+            bool cond = Convert.ToBoolean(condition);
+            if (cond)
             {
                 var trueValue = ParseExpression();
                 Expect(":");
-                var falseValue = ParseExpression();
-                return Convert.ToBoolean(condition) ? trueValue : falseValue;
+                BeginSkip();
+                try { ParseExpression(); }
+                finally { EndSkip(); }
+                return trueValue;
             }
-
-            return condition;
+            else
+            {
+                BeginSkip();
+                try { ParseExpression(); }
+                finally { EndSkip(); }
+                Expect(":");
+                return ParseExpression();
+            }
         }
 
+        // B9: Short-circuit evaluation for ??
         private object ParseNullCoalescing()
         {
             var left = ParseLogicalOr();
 
-            while (Match("??"))
+            while (true)
             {
-                var right = ParseLogicalOr();
-                left = left ?? right;
+                SkipWhitespace();
+                if (PeekChar() == '?' && PeekChar(1) == '?')
+                {
+                    _position += 2; // consume ??
+                    if (left != null && !IsSkipping)
+                    {
+                        BeginSkip();
+                        try { ParseLogicalOr(); }
+                        finally { EndSkip(); }
+                    }
+                    else
+                    {
+                        left = ParseLogicalOr();
+                    }
+                }
+                else break;
             }
 
             return left;
         }
+
+        // B9: Short-circuit evaluation for ||
         private object ParseLogicalOr()
         {
             var left = ParseLogicalAnd();
 
-            while (Match("||"))
+            while (true)
             {
-                var right = ParseLogicalAnd();
-                left = Convert.ToBoolean(left) || Convert.ToBoolean(right);
+                SkipWhitespace();
+                if (PeekChar() == '|' && PeekChar(1) == '|')
+                {
+                    _position += 2; // consume ||
+                    bool leftBool = Convert.ToBoolean(left);
+                    if (leftBool && !IsSkipping)
+                    {
+                        BeginSkip();
+                        try { ParseLogicalAnd(); }
+                        finally { EndSkip(); }
+                        left = true;
+                    }
+                    else
+                    {
+                        var right = ParseLogicalAnd();
+                        left = leftBool || Convert.ToBoolean(right);
+                    }
+                }
+                else break;
             }
 
             return left;
         }
+
+        // B9: Short-circuit evaluation for &&
         private object ParseLogicalAnd()
         {
             var left = ParseBitwiseOr();
 
-            while (Match("&&"))
+            while (true)
             {
-                var right = ParseBitwiseOr();
-                left = Convert.ToBoolean(left) && Convert.ToBoolean(right);
+                SkipWhitespace();
+                if (PeekChar() == '&' && PeekChar(1) == '&')
+                {
+                    _position += 2; // consume &&
+                    bool leftBool = Convert.ToBoolean(left);
+                    if (!leftBool && !IsSkipping)
+                    {
+                        BeginSkip();
+                        try { ParseBitwiseOr(); }
+                        finally { EndSkip(); }
+                        left = false;
+                    }
+                    else
+                    {
+                        var right = ParseBitwiseOr();
+                        left = leftBool && Convert.ToBoolean(right);
+                    }
+                }
+                else break;
             }
 
             return left;
         }
 
+        // B11: Use Int64 for bitwise operations to preserve precision
         private object ParseBitwiseOr()
         {
             var left = ParseBitwiseXor();
 
-            while (Match("|"))
+            while (true)
             {
-                var right = ParseBitwiseXor();
-                left = Convert.ToInt32(left) | Convert.ToInt32(right);
+                SkipWhitespace();
+                if (PeekChar() == '|' && PeekChar(1) != '|')
+                {
+                    _position++; // consume |
+                    var right = ParseBitwiseXor();
+                    if (!IsSkipping)
+                        left = Convert.ToInt64(left) | Convert.ToInt64(right);
+                }
+                else break;
             }
 
             return left;
@@ -179,10 +280,17 @@ namespace ScriptEngine
         {
             var left = ParseBitwiseAnd();
 
-            while (Match("^"))
+            while (true)
             {
-                var right = ParseBitwiseAnd();
-                left = Convert.ToInt32(left) ^ Convert.ToInt32(right);
+                SkipWhitespace();
+                if (PeekChar() == '^')
+                {
+                    _position++; // consume ^
+                    var right = ParseBitwiseAnd();
+                    if (!IsSkipping)
+                        left = Convert.ToInt64(left) ^ Convert.ToInt64(right);
+                }
+                else break;
             }
 
             return left;
@@ -192,95 +300,135 @@ namespace ScriptEngine
         {
             var left = ParseEquality();
 
-            while (Match("&"))
+            while (true)
             {
-                var right = ParseEquality();
-                left = Convert.ToInt32(left) & Convert.ToInt32(right);
+                SkipWhitespace();
+                if (PeekChar() == '&' && PeekChar(1) != '&')
+                {
+                    _position++; // consume &
+                    var right = ParseEquality();
+                    if (!IsSkipping)
+                        left = Convert.ToInt64(left) & Convert.ToInt64(right);
+                }
+                else break;
             }
 
             return left;
         }
 
+        // B1: Only == is equality operator (removed single = as equality)
         private object ParseEquality()
         {
             var left = ParseRelational();
 
             while (true)
             {
-                if (Match("==") || Match("="))
+                SkipWhitespace();
+                if (PeekChar() == '=' && PeekChar(1) == '=')
                 {
+                    _position += 2; // consume ==
                     var right = ParseRelational();
-                    left = Equals(left, right);
+                    if (!IsSkipping)
+                        left = Equals(left, right);
                 }
-                else if (Match("!="))
+                else if (PeekChar() == '!' && PeekChar(1) == '=')
                 {
+                    _position += 2; // consume !=
                     var right = ParseRelational();
-                    left = !Equals(left, right);
+                    if (!IsSkipping)
+                        left = !Equals(left, right);
                 }
-                else
-                {
-                    break;
-                }
+                else break;
             }
 
             return left;
         }
 
+        // B11: Preserve precision for long and decimal
+        // B31: String comparison support
         private object ParseRelational()
         {
             var left = ParseShift();
 
             while (true)
             {
-                if (Match("<="))
-                {
-                    var right = ParseShift();
-                    left = Convert.ToDouble(left) <= Convert.ToDouble(right);
-                }
-                else if (Match(">="))
-                {
-                    var right = ParseShift();
-                    left = Convert.ToDouble(left) >= Convert.ToDouble(right);
-                }
-                else if (Match("<"))
-                {
-                    var right = ParseShift();
-                    left = Convert.ToDouble(left) < Convert.ToDouble(right);
-                }
-                else if (Match(">"))
-                {
-                    var right = ParseShift();
-                    left = Convert.ToDouble(left) > Convert.ToDouble(right);
-                }
-                else
-                {
-                    break;
-                }
+                SkipWhitespace();
+                string op = PeekRelationalOp();
+                if (op == null) break;
+                _position += op.Length;
+
+                var right = ParseShift();
+                if (!IsSkipping)
+                    left = Compare(left, right, op);
             }
 
             return left;
         }
 
+        private string PeekRelationalOp()
+        {
+            char c = PeekChar();
+            char c2 = PeekChar(1);
+            if (c == '<' && c2 == '=') return "<=";
+            if (c == '>' && c2 == '=') return ">=";
+            if (c == '<') return "<";
+            if (c == '>') return ">";
+            return null;
+        }
+
+        private object Compare(object left, object right, string op)
+        {
+            int cmp;
+            if (left is string ls && right is string rs)
+            {
+                cmp = string.Compare(ls, rs, StringComparison.Ordinal);
+            }
+            else if (left is decimal || right is decimal)
+            {
+                cmp = decimal.Compare(Convert.ToDecimal(left), Convert.ToDecimal(right));
+            }
+            else if (IsInteger(left) && IsInteger(right))
+            {
+                cmp = Convert.ToInt64(left).CompareTo(Convert.ToInt64(right));
+            }
+            else
+            {
+                cmp = Convert.ToDouble(left).CompareTo(Convert.ToDouble(right));
+            }
+
+            switch (op)
+            {
+                case "<=": return cmp <= 0;
+                case ">=": return cmp >= 0;
+                case "<": return cmp < 0;
+                case ">": return cmp > 0;
+                default: throw new FormatException($"Unknown operator: {op}");
+            }
+        }
+
+        // B11: Use Int64 for shift operations
         private object ParseShift()
         {
             var left = ParseAdditive();
 
             while (true)
             {
-                if (Match("<<"))
+                SkipWhitespace();
+                if (PeekChar() == '<' && PeekChar(1) == '<')
                 {
+                    _position += 2; // consume <<
                     var right = ParseAdditive();
-                    left = Convert.ToInt32(left) << Convert.ToInt32(right);
+                    if (!IsSkipping)
+                        left = Convert.ToInt64(left) << (int)Convert.ToInt64(right);
                 }
-                else if (Match(">>"))
+                else if (PeekChar() == '>' && PeekChar(1) == '>')
                 {
+                    _position += 2; // consume >>
                     var right = ParseAdditive();
-                    left = Convert.ToInt32(left) >> Convert.ToInt32(right);
+                    if (!IsSkipping)
+                        left = Convert.ToInt64(left) >> (int)Convert.ToInt64(right);
                 }
-                else
-                {
-                    break;
-                }
+                else break;
             }
 
             return left;
@@ -292,20 +440,22 @@ namespace ScriptEngine
 
             while (true)
             {
-                if (Match("+"))
+                SkipWhitespace();
+                if (PeekChar() == '+' && PeekChar(1) != '+')
                 {
+                    _position++; // consume +
                     var right = ParseMultiplicative();
-                    left = Add(left, right);
+                    if (!IsSkipping)
+                        left = Add(left, right);
                 }
-                else if (Match("-"))
+                else if (PeekChar() == '-' && PeekChar(1) != '-')
                 {
+                    _position++; // consume -
                     var right = ParseMultiplicative();
-                    left = Subtract(left, right);
+                    if (!IsSkipping)
+                        left = Subtract(left, right);
                 }
-                else
-                {
-                    break;
-                }
+                else break;
             }
 
             return left;
@@ -317,61 +467,128 @@ namespace ScriptEngine
 
             while (true)
             {
-                if (Match("*"))
+                SkipWhitespace();
+                if (PeekChar() == '*' && PeekChar(1) != '*')
                 {
+                    _position++; // consume *
                     var right = ParseExponential();
-                    left = Multiply(left, right);
+                    if (!IsSkipping)
+                        left = Multiply(left, right);
                 }
-                else if (Match("/"))
+                else if (PeekChar() == '/')
                 {
+                    _position++; // consume /
                     var right = ParseExponential();
-                    left = Divide(left, right);
+                    if (!IsSkipping)
+                        left = Divide(left, right);
                 }
-                else if (Match("%"))
+                else if (PeekChar() == '%')
                 {
+                    _position++; // consume %
                     var right = ParseExponential();
-                    left = Modulo(left, right);
+                    if (!IsSkipping)
+                        left = Modulo(left, right);
                 }
-                else
-                {
-                    break;
-                }
+                else break;
             }
 
             return left;
         }
 
+        // B12: Right-associative (recursive call instead of loop)
         private object ParseExponential()
         {
             var left = ParseUnary();
 
-            while (Match("**"))
+            SkipWhitespace();
+            if (PeekChar() == '*' && PeekChar(1) == '*')
             {
-                var right = ParseUnary();
-                left = Math.Pow(Convert.ToDouble(left), Convert.ToDouble(right));
+                _position += 2; // consume **
+                var right = ParseExponential(); // right-associative
+                if (!IsSkipping)
+                    left = Math.Pow(Convert.ToDouble(left), Convert.ToDouble(right));
             }
 
             return left;
         }
 
+        // B2: Fixed postfix ++/-- by peeking identifier before evaluating
         private object ParseUnary()
         {
-            if (Match("+")) return ParseUnary();
-            if (Match("-")) return Negate(ParseUnary());
-            if (Match("!")) return Not(ParseUnary());
-            if (Match("~")) return BitwiseNot(ParseUnary());
-            if (Match("++")) return PreIncrement();
-            if (Match("--")) return PreDecrement();
+            SkipWhitespace();
 
-            // Postfix operators
+            // Pre-increment / pre-decrement (check before single +/-)
+            if (PeekChar() == '+' && PeekChar(1) == '+')
+            {
+                _position += 2;
+                return PreIncrement();
+            }
+            if (PeekChar() == '-' && PeekChar(1) == '-')
+            {
+                _position += 2;
+                return PreDecrement();
+            }
+
+            // Unary +, -, !, ~
+            if (PeekChar() == '+')
+            {
+                _position++;
+                return ParseUnary();
+            }
+            if (PeekChar() == '-')
+            {
+                _position++;
+                var v = ParseUnary();
+                return IsSkipping ? null : Negate(v);
+            }
+            if (PeekChar() == '!')
+            {
+                _position++;
+                var v = ParseUnary();
+                return IsSkipping ? null : Not(v);
+            }
+            if (PeekChar() == '~')
+            {
+                _position++;
+                var v = ParseUnary();
+                return IsSkipping ? null : BitwiseNot(v);
+            }
+
+            // Postfix: try to detect <identifier> (++ | --)
+            int savedPos = _position;
+            string peekedName = TryPeekIdentifier();
+
+            if (peekedName != null && !IsKeyword(peekedName))
+            {
+                SkipWhitespace();
+                if (PeekChar() == '+' && PeekChar(1) == '+')
+                {
+                    _position += 2; // consume ++
+                    return PostIncrement(peekedName);
+                }
+                if (PeekChar() == '-' && PeekChar(1) == '-')
+                {
+                    _position += 2; // consume --
+                    return PostDecrement(peekedName);
+                }
+            }
+
+            // Not postfix, restore position
+            _position = savedPos;
+
             var result = ParsePrimary();
 
-            if (Match("++")) return PostIncrement(result);
-            if (Match("--")) return PostDecrement(result);
+            // Detect unsupported postfix on non-identifier expressions (B13)
+            SkipWhitespace();
+            if (PeekChar() == '+' && PeekChar(1) == '+')
+                throw new FormatException("Postfix ++ is only supported on simple identifiers");
+            if (PeekChar() == '-' && PeekChar(1) == '-')
+                throw new FormatException("Postfix -- is only supported on simple identifiers");
 
             return result;
         }
 
+        // B3: Keywords use MatchWord with word boundary check
         private object ParsePrimary()
         {
             SkipWhitespace();
@@ -379,58 +596,79 @@ namespace ScriptEngine
             if (_position >= _expression.Length)
                 throw new FormatException("Unexpected end of expression");
 
-            // بررسی عدد
-            if (char.IsDigit(_expression[_position]) || _expression[_position] == '.')
+            char c = _expression[_position];
+
+            // Number (including hex and binary - B17)
+            if (char.IsDigit(c) || (c == '.' && _position + 1 < _expression.Length && char.IsDigit(_expression[_position + 1])))
                 return ParseNumber();
 
-            // بررسی رشته
-            if (_expression[_position] == '"' || _expression[_position] == '\'')
+            // String
+            if (c == '"' || c == '\'')
                 return ParseString();
 
-            // بررسی آرایه
-            if (_expression[_position] == '[')
+            // Array
+            if (c == '[')
                 return ParseArray();
 
-            // بررسی پرانتز
-            if (Match("("))
+            // Parenthesized expression
+            if (c == '(')
             {
+                _position++; // consume (
                 var result = ParseExpression();
                 Expect(")");
                 return result;
             }
 
-            // بررسی مقادیر بولین و null
-            if (Match("true", true)) return true;
-            if (Match("false", true)) return false;
-            if (Match("null", true)) return null;
+            // Keywords (with word boundary - B3)
+            if (MatchWord("true")) return true;
+            if (MatchWord("false")) return false;
+            if (MatchWord("null")) return null;
 
-            // بررسی توابع، متغیرها و خصوصیات
-            if (char.IsLetter(_expression[_position]) || _expression[_position] == '_')
+            // Identifier (variable, function, member access)
+            if (char.IsLetter(c) || c == '_')
                 return ParseIdentifier();
 
-            throw new FormatException($"Unexpected character at position {_position}: '{_expression[_position]}' in expression: '{_expression}'");
+            throw new FormatException($"Unexpected character at position {_position}: '{c}' in expression: '{_expression}'");
         }
 
+        // B17: Hex (0x) and Binary (0b) number support
+        // B20: Fallback to decimal/double for very long numbers
         private object ParseNumber()
         {
+            // Hex: 0x...
+            if (_position + 1 < _expression.Length && _expression[_position] == '0' &&
+                (_expression[_position + 1] == 'x' || _expression[_position + 1] == 'X'))
+            {
+                _position += 2;
+                return ParseHexNumber();
+            }
+
+            // Binary: 0b...
+            if (_position + 1 < _expression.Length && _expression[_position] == '0' &&
+                (_expression[_position + 1] == 'b' || _expression[_position + 1] == 'B'))
+            {
+                _position += 2;
+                return ParseBinaryNumber();
+            }
+
             int start = _position;
             bool hasDecimal = false;
             bool hasExponent = false;
 
             while (_position < _expression.Length)
             {
-                char c = _expression[_position];
+                char ch = _expression[_position];
 
-                if (char.IsDigit(c))
+                if (char.IsDigit(ch))
                 {
                     _position++;
                 }
-                else if (c == '.' && !hasDecimal && !hasExponent)
+                else if (ch == '.' && !hasDecimal && !hasExponent)
                 {
                     hasDecimal = true;
                     _position++;
                 }
-                else if ((c == 'e' || c == 'E') && !hasExponent)
+                else if ((ch == 'e' || ch == 'E') && !hasExponent)
                 {
                     hasExponent = true;
                     _position++;
@@ -450,27 +688,81 @@ namespace ScriptEngine
 
             if (hasDecimal || hasExponent)
             {
-                if (double.TryParse(numberStr, NumberStyles.Any, CultureInfo.InvariantCulture, out double result))
-                    return result;
+                if (double.TryParse(numberStr, NumberStyles.Any, CultureInfo.InvariantCulture, out double dblResult))
+                    return dblResult;
             }
             else
             {
-                if (int.TryParse(numberStr, out int result))
-                    return result;
+                if (int.TryParse(numberStr, out int intResult))
+                    return intResult;
 
                 if (long.TryParse(numberStr, out long longResult))
                     return longResult;
+
+                // Very long integers: fallback to decimal (B20)
+                if (decimal.TryParse(numberStr, NumberStyles.Any, CultureInfo.InvariantCulture, out decimal decResult))
+                    return decResult;
+
+                // Final fallback to double
+                if (double.TryParse(numberStr, NumberStyles.Any, CultureInfo.InvariantCulture, out double dblResult))
+                    return dblResult;
             }
 
             throw new FormatException($"Invalid number format: '{numberStr}'");
         }
+
+        private object ParseHexNumber()
+        {
+            int start = _position;
+            while (_position < _expression.Length && IsHexDigit(_expression[_position]))
+            {
+                _position++;
+            }
+
+            string hex = _expression.Substring(start, _position - start);
+            if (string.IsNullOrEmpty(hex))
+                throw new FormatException("Invalid hex number: no digits after '0x'");
+
+            if (long.TryParse(hex, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out long result))
+                return result;
+
+            throw new FormatException($"Invalid hex number: '0x{hex}'");
+        }
+
+        private static bool IsHexDigit(char c)
+        {
+            return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+        }
+
+        private object ParseBinaryNumber()
+        {
+            int start = _position;
+            while (_position < _expression.Length && (_expression[_position] == '0' || _expression[_position] == '1'))
+            {
+                _position++;
+            }
+
+            string bin = _expression.Substring(start, _position - start);
+            if (string.IsNullOrEmpty(bin))
+                throw new FormatException("Invalid binary number: no digits after '0b'");
+
+            long result = 0;
+            foreach (char c in bin)
+            {
+                result = result * 2 + (c - '0');
+            }
+            return result;
+        }
+
+        // B10: Fixed unterminated string detection
         private string ParseString()
         {
             char quoteChar = _expression[_position];
-            Expect(quoteChar.ToString());
+            _position++; // consume opening quote
 
             StringBuilder sb = new StringBuilder();
             bool escape = false;
+            bool terminated = false;
 
             while (_position < _expression.Length)
             {
@@ -489,8 +781,10 @@ namespace ScriptEngine
                         case 'b': sb.Append('\b'); break;
                         case 'f': sb.Append('\f'); break;
                         case 'v': sb.Append('\v'); break;
+                        case '\\': sb.Append('\\'); break;
+                        case '"': sb.Append('"'); break;
+                        case '\'': sb.Append('\''); break;
                         case 'u':
-                            // Unicode escape
                             if (_position + 4 <= _expression.Length)
                             {
                                 string hex = _expression.Substring(_position, 4);
@@ -510,7 +804,6 @@ namespace ScriptEngine
                             }
                             break;
                         case 'x':
-                            // Hex escape
                             if (_position + 2 <= _expression.Length)
                             {
                                 string hex = _expression.Substring(_position, 2);
@@ -541,6 +834,7 @@ namespace ScriptEngine
                 }
                 else if (c == quoteChar)
                 {
+                    terminated = true;
                     break;
                 }
                 else
@@ -549,7 +843,7 @@ namespace ScriptEngine
                 }
             }
 
-            if (_position > _expression.Length)
+            if (!terminated)
                 throw new FormatException("Unterminated string literal");
 
             return sb.ToString();
@@ -560,6 +854,7 @@ namespace ScriptEngine
             Expect("[");
             var elements = new List<object>();
 
+            SkipWhitespace();
             if (!Match("]"))
             {
                 do
@@ -574,25 +869,40 @@ namespace ScriptEngine
             return elements.ToArray();
         }
 
+        // B4, B5: Member access chaining and method call + member access
         private object ParseIdentifier()
         {
             string identifier = ParseIdentifierName();
+            return ParsePostfix(identifier);
+        }
+
+        private object ParsePostfix(string identifier)
+        {
             SkipWhitespace();
 
-            // بررسی اگر تابع است
+            object result;
+
+            // Function call
             if (_position < _expression.Length && _expression[_position] == '(')
             {
-                return ParseFunctionCall(identifier);
+                result = ParseFunctionCall(identifier);
             }
-
-            // بررسی اگر خصوصیت یا متد است
-            if (Match("."))
+            else
             {
-                return ParseMemberAccess(identifier);
+                result = IsSkipping ? null : GetVariableValue(identifier);
             }
 
-            // بررسی اگر متغیر است
-            return GetVariableValue(identifier);
+            // Chained member access and method calls (a.b.c, a.b().c, now().Year, etc.)
+            while (true)
+            {
+                SkipWhitespace();
+                if (!Match("."))
+                    break;
+
+                result = ParseMemberAccess(result);
+            }
+
+            return result;
         }
 
         private string ParseIdentifierName()
@@ -613,11 +923,24 @@ namespace ScriptEngine
             return _expression.Substring(start, _position - start);
         }
 
+        // B36: Special-case iif and coalesce for short-circuit evaluation
         private object ParseFunctionCall(string functionName)
         {
             Expect("(");
+
+            // Special-case iif and coalesce for short-circuit evaluation
+            if (string.Equals(functionName, "iif", StringComparison.OrdinalIgnoreCase))
+            {
+                return ParseIif();
+            }
+            if (string.Equals(functionName, "coalesce", StringComparison.OrdinalIgnoreCase))
+            {
+                return ParseCoalesce();
+            }
+
             var parameters = new List<object>();
 
+            SkipWhitespace();
             if (!Match(")"))
             {
                 do
@@ -628,6 +951,9 @@ namespace ScriptEngine
 
                 Expect(")");
             }
+
+            if (IsSkipping)
+                return null;
 
             if (_functions.TryGetValue(functionName, out var function))
             {
@@ -644,26 +970,106 @@ namespace ScriptEngine
             throw new FormatException($"Unknown function: '{functionName}'");
         }
 
+        // B36: iif with short-circuit evaluation
+        private object ParseIif()
+        {
+            // iif(condition, trueValue, falseValue) with short-circuit evaluation
+            object condition = ParseExpression();
+            Expect(",");
+
+            if (IsSkipping)
+            {
+                ParseExpression();
+                Expect(",");
+                ParseExpression();
+                Expect(")");
+                return null;
+            }
+
+            bool cond = Convert.ToBoolean(condition);
+            if (cond)
+            {
+                var trueValue = ParseExpression();
+                Expect(",");
+                BeginSkip();
+                try { ParseExpression(); }
+                finally { EndSkip(); }
+                Expect(")");
+                return trueValue;
+            }
+            else
+            {
+                BeginSkip();
+                try { ParseExpression(); }
+                finally { EndSkip(); }
+                Expect(",");
+                var falseValue = ParseExpression();
+                Expect(")");
+                return falseValue;
+            }
+        }
+
+        // B36: coalesce with short-circuit evaluation
+        private object ParseCoalesce()
+        {
+            // coalesce(a, b, c, ...) - returns first non-null, with short-circuit
+            object result = null;
+            bool found = false;
+
+            while (true)
+            {
+                object value;
+                if (found && !IsSkipping)
+                {
+                    BeginSkip();
+                    try { value = ParseExpression(); }
+                    finally { EndSkip(); }
+                }
+                else
+                {
+                    value = ParseExpression();
+                    if (!IsSkipping && !found && value != null)
+                    {
+                        result = value;
+                        found = true;
+                    }
+                }
+
+                SkipWhitespace();
+                if (!Match(","))
+                    break;
+            }
+
+            Expect(")");
+            return result;
+        }
+
+        // B4: Member access chaining support
         private object ParseMemberAccess(object target)
         {
             string memberName = ParseIdentifierName();
             SkipWhitespace();
 
-            // بررسی اگر متد است
+            // Method call
             if (_position < _expression.Length && _expression[_position] == '(')
             {
                 return ParseMethodCall(target, memberName);
             }
 
-            // بررسی اگر خصوصیت است
+            // Property/field access
+            if (IsSkipping)
+                return null;
+
             return GetMemberValue(target, memberName);
         }
 
+        // B8: Reflection security check
         private object ParseMethodCall(object target, string methodName)
         {
             Expect("(");
             var parameters = new List<object>();
 
+            SkipWhitespace();
             if (!Match(")"))
             {
                 do
@@ -675,7 +1081,15 @@ namespace ScriptEngine
                 Expect(")");
             }
 
-            // استفاده از reflection برای فراخوانی متد
+            if (IsSkipping)
+                return null;
+
+            if (target == null)
+                throw new FormatException($"Cannot call method '{methodName}' on null target");
+
+            // Security check (B8)
+            ScriptEngineSecurity.CheckReflectionAllowed(target.GetType());
+
             try
             {
                 var method = target.GetType().GetMethod(methodName,
@@ -689,15 +1103,21 @@ namespace ScriptEngine
 
                 throw new FormatException($"Unknown method: '{methodName}'");
             }
-            catch (Exception ex)
+            catch (Exception ex) when (!(ex is FormatException))
             {
                 throw new FormatException($"Error calling method '{methodName}': {ex.Message}");
             }
         }
 
+        // B8: Reflection security check
         private object GetMemberValue(object target, string memberName)
         {
-            // استفاده از reflection برای دسترسی به خصوصیت
+            if (target == null)
+                throw new FormatException($"Cannot access member '{memberName}' on null target");
+
+            // Security check (B8)
+            ScriptEngineSecurity.CheckReflectionAllowed(target.GetType());
+
             try
             {
                 var property = target.GetType().GetProperty(memberName,
@@ -716,7 +1136,7 @@ namespace ScriptEngine
 
                 throw new FormatException($"Unknown member: '{memberName}'");
             }
-            catch (Exception ex)
+            catch (Exception ex) when (!(ex is FormatException))
             {
                 throw new FormatException($"Error accessing member '{memberName}': {ex.Message}");
             }
@@ -738,43 +1158,115 @@ namespace ScriptEngine
             throw new FormatException($"Unknown variable: '{variableName}'");
         }
 
-        // عملگرهای ریاضی با پشتیبانی از انواع مختلف
+        // B11: Arithmetic with type preservation (long, decimal, double)
         private object Add(object left, object right)
         {
             if (left is string || right is string)
                 return $"{left}{right}";
+
+            if (IsDouble(left) || IsDouble(right))
+                return Convert.ToDouble(left) + Convert.ToDouble(right);
+
+            if (left is decimal || right is decimal)
+                return Convert.ToDecimal(left) + Convert.ToDecimal(right);
+
+            if (IsInteger(left) && IsInteger(right))
+                return Convert.ToInt64(left) + Convert.ToInt64(right);
 
             return Convert.ToDouble(left) + Convert.ToDouble(right);
         }
 
         private object Subtract(object left, object right)
         {
+            if (IsDouble(left) || IsDouble(right))
+                return Convert.ToDouble(left) - Convert.ToDouble(right);
+
+            if (left is decimal || right is decimal)
+                return Convert.ToDecimal(left) - Convert.ToDecimal(right);
+
+            if (IsInteger(left) && IsInteger(right))
+                return Convert.ToInt64(left) - Convert.ToInt64(right);
+
             return Convert.ToDouble(left) - Convert.ToDouble(right);
         }
 
         private object Multiply(object left, object right)
         {
+            if (IsDouble(left) || IsDouble(right))
+                return Convert.ToDouble(left) * Convert.ToDouble(right);
+
+            if (left is decimal || right is decimal)
+                return Convert.ToDecimal(left) * Convert.ToDecimal(right);
+
+            if (IsInteger(left) && IsInteger(right))
+                return Convert.ToInt64(left) * Convert.ToInt64(right);
+
             return Convert.ToDouble(left) * Convert.ToDouble(right);
         }
 
         private object Divide(object left, object right)
         {
-            if (Convert.ToDouble(right) == 0)
-                throw new DivideByZeroException("Division by zero");
+            if (IsDouble(left) || IsDouble(right))
+            {
+                double r = Convert.ToDouble(right);
+                if (r == 0) throw new DivideByZeroException("Division by zero");
+                return Convert.ToDouble(left) / r;
+            }
 
-            return Convert.ToDouble(left) / Convert.ToDouble(right);
+            if (left is decimal || right is decimal)
+            {
+                decimal r = Convert.ToDecimal(right);
+                if (r == 0) throw new DivideByZeroException("Division by zero");
+                return Convert.ToDecimal(left) / r;
+            }
+
+            if (IsInteger(left) && IsInteger(right))
+            {
+                long l = Convert.ToInt64(left);
+                long r = Convert.ToInt64(right);
+                if (r == 0) throw new DivideByZeroException("Division by zero");
+                if (l % r == 0)
+                    return l / r; // exact division, keep as long
+                return (double)l / (double)r; // inexact, return double
+            }
+
+            double dr = Convert.ToDouble(right);
+            if (dr == 0) throw new DivideByZeroException("Division by zero");
+            return Convert.ToDouble(left) / dr;
         }
 
         private object Modulo(object left, object right)
         {
-            if (Convert.ToDouble(right) == 0)
-                throw new DivideByZeroException("Division by zero in modulo operation");
+            if (IsDouble(left) || IsDouble(right))
+            {
+                double r = Convert.ToDouble(right);
+                if (r == 0) throw new DivideByZeroException("Division by zero in modulo operation");
+                return Convert.ToDouble(left) % r;
+            }
 
-            return Convert.ToDouble(left) % Convert.ToDouble(right);
+            if (left is decimal || right is decimal)
+            {
+                decimal r = Convert.ToDecimal(right);
+                if (r == 0) throw new DivideByZeroException("Division by zero in modulo operation");
+                return Convert.ToDecimal(left) % r;
+            }
+
+            if (IsInteger(left) && IsInteger(right))
+            {
+                long r = Convert.ToInt64(right);
+                if (r == 0) throw new DivideByZeroException("Division by zero in modulo operation");
+                return Convert.ToInt64(left) % r;
+            }
+
+            double dr2 = Convert.ToDouble(right);
+            if (dr2 == 0) throw new DivideByZeroException("Division by zero in modulo operation");
+            return Convert.ToDouble(left) % dr2;
         }
 
         private object Negate(object value)
         {
+            if (value is decimal d) return -d;
+            if (IsInteger(value)) return -Convert.ToInt64(value);
             return -Convert.ToDouble(value);
         }
 
@@ -785,69 +1277,126 @@ namespace ScriptEngine
 
         private object BitwiseNot(object value)
         {
-            return ~Convert.ToInt32(value);
+            return ~Convert.ToInt64(value);
+        }
+
+        private static bool IsInteger(object value)
+        {
+            return value is sbyte || value is byte || value is short || value is ushort ||
+                   value is int || value is uint || value is long || value is ulong;
+        }
+
+        private static bool IsDouble(object value)
+        {
+            return value is float || value is double;
         }
 
         private object PreIncrement()
         {
-            // فقط برای متغیرها قابل استفاده است
             string varName = ParseIdentifierName();
+            if (string.IsNullOrEmpty(varName))
+                throw new FormatException("Expected variable name after '++'");
+
+            if (IsSkipping) return null;
+
             object value = GetVariableValue(varName);
-            value = Convert.ToDouble(value) + 1;
-            SetVariableValue(varName, value);
-            return value;
+            object newValue = IncrementValue(value, 1);
+            SetVariableValue(varName, newValue);
+            return newValue;
         }
 
         private object PreDecrement()
         {
             string varName = ParseIdentifierName();
+            if (string.IsNullOrEmpty(varName))
+                throw new FormatException("Expected variable name after '--'");
+
+            if (IsSkipping) return null;
+
             object value = GetVariableValue(varName);
-            value = Convert.ToDouble(value) - 1;
-            SetVariableValue(varName, value);
-            return value;
+            object newValue = IncrementValue(value, -1);
+            SetVariableValue(varName, newValue);
+            return newValue;
         }
 
-        private object PostIncrement(object value)
+        // B2: Fixed - takes variable name directly instead of trying to extract from value
+        private object PostIncrement(string varName)
         {
-            if (!(value is string varName))
-                throw new FormatException("Post-increment can only be applied to variables");
+            if (IsSkipping) return null;
 
             object oldValue = GetVariableValue(varName);
-            SetVariableValue(varName, Convert.ToDouble(oldValue) + 1);
+            object newValue = IncrementValue(oldValue, 1);
+            SetVariableValue(varName, newValue);
             return oldValue;
         }
 
-        private object PostDecrement(object value)
+        private object PostDecrement(string varName)
         {
-            if (!(value is string varName))
-                throw new FormatException("Post-decrement can only be applied to variables");
+            if (IsSkipping) return null;
 
             object oldValue = GetVariableValue(varName);
-            SetVariableValue(varName, Convert.ToDouble(oldValue) - 1);
+            object newValue = IncrementValue(oldValue, -1);
+            SetVariableValue(varName, newValue);
             return oldValue;
         }
 
+        private static object IncrementValue(object value, int delta)
+        {
+            if (value is decimal d) return d + delta;
+            if (value is double dbl) return dbl + delta;
+            if (value is float f) return f + delta;
+            if (value is long l) return l + delta;
+            if (value is int i) return i + delta;
+            return Convert.ToDouble(value) + delta;
+        }
+
+        // B7: Propagate variable changes to executor via callback
         private void SetVariableValue(string varName, object value)
         {
-            if (_localVariables.ContainsKey(varName))
-            {
-                _localVariables[varName] = value;
-            }
-            else if (_variables.ContainsKey(varName))
-            {
-                _variables[varName] = value;
-            }
-            else
-            {
-                _localVariables[varName] = value;
-            }
+            _localVariables[varName] = value;
+            _setVariableCallback?.Invoke(varName, value);
         }
 
+        // B18: Support line (//) and block (/* */) comments
         private void SkipWhitespace()
         {
-            while (_position < _expression.Length && char.IsWhiteSpace(_expression[_position]))
+            while (_position < _expression.Length)
             {
-                _position++;
+                char c = _expression[_position];
+
+                if (char.IsWhiteSpace(c))
+                {
+                    _position++;
+                }
+                else if (c == '/' && _position + 1 < _expression.Length && _expression[_position + 1] == '/')
+                {
+                    // Line comment
+                    _position += 2;
+                    while (_position < _expression.Length && _expression[_position] != '\n')
+                        _position++;
+                }
+                else if (c == '/' && _position + 1 < _expression.Length && _expression[_position + 1] == '*')
+                {
+                    // Block comment
+                    _position += 2;
+                    bool closed = false;
+                    while (_position + 1 < _expression.Length)
+                    {
+                        if (_expression[_position] == '*' && _expression[_position + 1] == '/')
+                        {
+                            _position += 2;
+                            closed = true;
+                            break;
+                        }
+                        _position++;
+                    }
+                    if (!closed)
+                        throw new FormatException("Unterminated block comment");
+                }
+                else
+                {
+                    break;
+                }
             }
         }
 
@@ -869,10 +1418,71 @@ namespace ScriptEngine
             return matches;
         }
 
+        // B3: Match keywords with word boundary check
+        private bool MatchWord(string expected)
+        {
+            SkipWhitespace();
+
+            if (_position + expected.Length > _expression.Length)
+                return false;
+
+            string actual = _expression.Substring(_position, expected.Length);
+            if (!string.Equals(actual, expected, StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            // Check word boundary
+            int nextPos = _position + expected.Length;
+            if (nextPos < _expression.Length)
+            {
+                char next = _expression[nextPos];
+                if (char.IsLetterOrDigit(next) || next == '_')
+                    return false;
+            }
+
+            _position = nextPos;
+            return true;
+        }
+
         private void Expect(string expected)
         {
             if (!Match(expected))
                 throw new FormatException($"Expected '{expected}' at position {_position} in expression: '{_expression}'");
+        }
+
+        private char PeekChar(int offset = 0)
+        {
+            int pos = _position + offset;
+            return pos < _expression.Length ? _expression[pos] : '\0';
+        }
+
+        private string TryPeekIdentifier()
+        {
+            SkipWhitespace();
+
+            if (_position >= _expression.Length)
+                return null;
+
+            if (!char.IsLetter(_expression[_position]) && _expression[_position] != '_')
+                return null;
+
+            int start = _position;
+            _position++;
+
+            while (_position < _expression.Length &&
+                  (char.IsLetterOrDigit(_expression[_position]) || _expression[_position] == '_'))
+            {
+                _position++;
+            }
+
+            return _expression.Substring(start, _position - start);
+        }
+
+        private static bool IsKeyword(string name)
+        {
+            return string.Equals(name, "true", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(name, "false", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(name, "null", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(name, "var", StringComparison.OrdinalIgnoreCase);
         }
     }
 }
