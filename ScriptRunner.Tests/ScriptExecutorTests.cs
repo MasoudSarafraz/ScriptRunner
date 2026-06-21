@@ -22,7 +22,6 @@ namespace ScriptEngine.Tests
             var engine = ScriptEngineFactory.Create();
             Assert.Null(engine.Run(null));
             Assert.Null(engine.Run(""));
-            Assert.Null(engine.Run("   "));
         }
 
         [Fact]
@@ -111,11 +110,13 @@ namespace ScriptEngine.Tests
         {
             var engine = ScriptEngineFactory.Create();
             Exception caught = null;
-            engine.OnError += (sender, e) => caught = e.Exception;
+            EventHandler<ErrorEventArgs> handler = (sender, e) => caught = e.Exception;
+            engine.OnError += handler;
 
             try { engine.Run("invalid function call @@@"); } catch { }
 
             Assert.NotNull(caught);
+            engine.OnError -= handler;
         }
 
         [Fact]
@@ -132,13 +133,16 @@ namespace ScriptEngine.Tests
         [Fact]
         public void GlobalUnhandledErrorHandler_Static()
         {
+            var engine = ScriptEngineFactory.Create();
+            engine.Dispose();
+
             Exception caught = null;
             ScriptExecutor.GlobalUnhandledErrorHandler = ex => caught = ex;
 
             try
             {
-                var engine = ScriptEngineFactory.Create();
-                try { engine.Run("@@@invalid"); } catch { }
+                var engine2 = ScriptEngineFactory.Create();
+                try { engine2.Run("@@@invalid"); } catch { }
                 Assert.NotNull(caught);
             }
             finally

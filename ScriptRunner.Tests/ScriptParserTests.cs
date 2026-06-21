@@ -435,21 +435,21 @@ namespace ScriptEngine.Tests
         public void Comments_LineComment()
         {
             var parser = CreateParser("1 + 2 // this is a comment");
-            Assert.Equal(3, parser.Evaluate());
+            Assert.Equal(3L, parser.Evaluate());
         }
 
         [Fact]
         public void Comments_BlockComment()
         {
             var parser = CreateParser("1 + /* comment */ 2");
-            Assert.Equal(3, parser.Evaluate());
+            Assert.Equal(3L, parser.Evaluate());
         }
 
         [Fact]
         public void Comments_MultilineBlockComment()
         {
             var parser = CreateParser("1 + /* multi\nline\ncomment */ 2");
-            Assert.Equal(3, parser.Evaluate());
+            Assert.Equal(3L, parser.Evaluate());
         }
 
         [Fact]
