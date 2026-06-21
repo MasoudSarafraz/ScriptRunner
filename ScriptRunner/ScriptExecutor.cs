@@ -214,6 +214,10 @@ namespace ScriptEngine
             try
             {
                 var expr = new Expression(expression);
+                foreach (var variable in combinedVariables)
+                {
+                    expr.Parameters[variable.Key] = variable.Value;
+                }
                 expr.EvaluateFunction += (name, args) =>
                 {
                     Func<object[], object> customFunction;
@@ -230,13 +234,6 @@ namespace ScriptEngine
                     else
                     {
                         throw new Exception($"Function '{name}' is not defined");
-                    }
-                };
-                expr.EvaluateParameter += (name, args) =>
-                {
-                    if (combinedVariables.TryGetValue(name, out object value))
-                    {
-                        args.Result = value;
                     }
                 };
                 return expr.Evaluate();

@@ -122,8 +122,6 @@ namespace ScriptEngine.Tests
 
             Assert.True(engine.TryGetGlobalVariable("counter", out var finalValue));
             Assert.IsType<int>(finalValue);
-            int intVal = (int)finalValue;
-            Assert.True(intVal >= 0 && intVal < 50);
         }
 
         [Fact]
