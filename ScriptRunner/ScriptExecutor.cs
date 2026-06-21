@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
@@ -10,20 +10,15 @@ namespace ScriptEngine
     internal sealed class ScriptExecutor : IScriptExecutor
     {
         private static readonly Lazy<ScriptExecutor> _instance = new Lazy<ScriptExecutor>(() => new ScriptExecutor());
-        // توابع عمومی که بین تمام threadها به اشتراک گذاشته می‌شوند
+
         private readonly ConcurrentDictionary<string, Func<object[], object>> _globalFunctions;
-        // توابع مخصوص هر thread
+
         private readonly ThreadLocal<ConcurrentDictionary<string, Func<object[], object>>> _threadLocalFunctions;
         private readonly ReaderWriterLockSlim _lock = new ReaderWriterLockSlim(LockRecursionPolicy.NoRecursion);
         private EventHandler<ErrorEventArgs> _onError;
 
-        // B35: Global unhandled error handler (static, overrides console output)
         private static volatile Action<Exception> _globalUnhandledErrorHandler;
 
-        /// <summary>
-        /// Gets or sets a global handler for unhandled errors when no OnError subscriber is attached.
-        /// If null (default), errors are written to Console.Error.
-        /// </summary>
         public static Action<Exception> GlobalUnhandledErrorHandler
         {
             get => _globalUnhandledErrorHandler;
@@ -60,43 +55,10 @@ namespace ScriptEngine
         {
             _globalFunctions = new ConcurrentDictionary<string, Func<object[], object>>(StringComparer.OrdinalIgnoreCase);
             _threadLocalFunctions = new ThreadLocal<ConcurrentDictionary<string, Func<object[], object>>>(() => new ConcurrentDictionary<string, Func<object[], object>>(StringComparer.OrdinalIgnoreCase));
-            // Add Default Global Functions
-            //AddGlobalFunction("iif", parameters =>
-            //{
-            //    if (parameters.Length != 3)
-            //    {
-            //        throw new ArgumentException("iif requires exactly three parameters");
-            //    }
 
-            //    bool condition = false;
-            //    try
-            //    {
-            //        condition = Convert.ToBoolean(parameters[0]);
-            //    }
-            //    catch (Exception ex)
-            //    {
-            //        throw new ArgumentException("First parameter of iif must be a boolean value", ex);
-            //    }
-
-            //    return condition ? parameters[1] : parameters[2];
-            //});
-
-            //AddGlobalFunction("coalesce", parameters =>
-            //{
-            //    if (parameters.Length == 0)
-            //        return null;
-
-            //    foreach (var param in parameters)
-            //    {
-            //        if (param != null)
-            //            return param;
-            //    }
-
-            //    return parameters[parameters.Length - 1];
-            //});
         }
         public static IScriptExecutor Instance => _instance.Value;
-        // متد برای افزودن تابع عمومی (اشتراکی بین تمام threadها)
+
         public void AddGlobalFunction(string name, Func<object[], object> function)
         {
             if (string.IsNullOrWhiteSpace(name))
@@ -113,7 +75,7 @@ namespace ScriptEngine
                 _lock.ExitWriteLock();
             }
         }
-        // متد برای افزودن تابع مخصوص thread جاری
+
         public void AddLocalThreadFunction(string name, Func<object[], object> function)
         {
             if (string.IsNullOrWhiteSpace(name))
@@ -123,7 +85,7 @@ namespace ScriptEngine
             var localFunctions = _threadLocalFunctions.Value;
             localFunctions.AddOrUpdate(name, function, (key, oldValue) => function);
         }
-        // متد عمومی برای افزودن تابع (با اولویت thread-local)
+
         public void AddCustomFunction(string name, Func<object[], object> function)
         {
             AddLocalThreadFunction(name, function);
@@ -219,9 +181,9 @@ namespace ScriptEngine
             {
                 return null;
             }
-            // ترکیب توابع عمومی و توابع مخصوص thread جاری
+
             var combinedFunctions = new ConcurrentDictionary<string, Func<object[], object>>(StringComparer.OrdinalIgnoreCase);
-            // اضافه کردن توابع عمومی
+
             _lock.EnterReadLock();
             try
             {
@@ -234,7 +196,7 @@ namespace ScriptEngine
             {
                 _lock.ExitReadLock();
             }
-            // اضافه کردن توابع مخصوص thread جاری (با اولویت بالاتر)
+
             var localFunctions = _threadLocalFunctions.Value;
             foreach (var func in localFunctions)
             {
@@ -270,9 +232,6 @@ namespace ScriptEngine
             }
         }
 
-        // B6, B16: Safe Dispose - does not kill singleton resources
-        // Clears only the current thread's local state.
-        // Global functions and singleton infrastructure are preserved.
         public void Dispose()
         {
             _lock.EnterWriteLock();
@@ -285,17 +244,13 @@ namespace ScriptEngine
                 _lock.ExitWriteLock();
             }
 
-            // Clear thread-local state for the current thread only
-            // Note: For singleton executor, global state and shared infrastructure
-            // (ThreadLocal, locks) are NOT disposed to keep the singleton usable.
             if (_threadLocalFunctions.IsValueCreated)
             {
                 try { _threadLocalFunctions.Value.Clear(); }
-                catch { /* ignore */ }
+                catch {   }
             }
         }
 
-        // B35: Use global handler if set, otherwise console
         private void RaiseError(Exception exception)
         {
             var handler = _onError;
@@ -307,7 +262,7 @@ namespace ScriptEngine
                 }
                 catch
                 {
-                    // Ignore
+
                 }
             }
             else
@@ -321,7 +276,7 @@ namespace ScriptEngine
                     }
                     catch
                     {
-                        // Ignore
+
                     }
                 }
                 else
@@ -336,7 +291,7 @@ namespace ScriptEngine
                     }
                     catch
                     {
-                        // Ignore Exception
+
                     }
                 }
             }

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Globalization;
@@ -53,7 +53,6 @@ namespace ScriptEngine
             return result;
         }
 
-        // B19: Support multiple statements separated by ';'
         private object ParseStatementList()
         {
             object result = ParseExpression();
@@ -79,11 +78,9 @@ namespace ScriptEngine
             return ParseAssignment();
         }
 
-        // B1: Fixed assignment by peeking identifier before evaluating
-        // B7: var declarations propagate to executor via callback
         private object ParseAssignment()
         {
-            // var declaration (var x = ...)
+
             if (MatchWord("var"))
             {
                 SkipWhitespace();
@@ -99,7 +96,6 @@ namespace ScriptEngine
                 return value;
             }
 
-            // Assignment detection: <identifier> = (not ==)
             int savedPos = _position;
             string peekedName = TryPeekIdentifier();
 
@@ -108,7 +104,7 @@ namespace ScriptEngine
                 SkipWhitespace();
                 if (PeekChar() == '=' && PeekChar(1) != '=')
                 {
-                    _position++; // consume =
+                    _position++;
                     SkipWhitespace();
                     object value = ParseExpression();
                     SetVariableValue(peekedName, value);
@@ -116,12 +112,10 @@ namespace ScriptEngine
                 }
             }
 
-            // Not an assignment, restore and parse normally
             _position = savedPos;
             return ParseConditionalExpression();
         }
 
-        // B9: Short-circuit evaluation for ternary
         private object ParseConditionalExpression()
         {
             var condition = ParseNullCoalescing();
@@ -130,11 +124,10 @@ namespace ScriptEngine
             if (PeekChar() != '?')
                 return condition;
 
-            // Check it's not ??
             if (PeekChar(1) == '?')
                 return condition;
 
-            _position++; // consume ?
+            _position++;
             SkipWhitespace();
 
             if (IsSkipping)
@@ -165,7 +158,6 @@ namespace ScriptEngine
             }
         }
 
-        // B9: Short-circuit evaluation for ??
         private object ParseNullCoalescing()
         {
             var left = ParseLogicalOr();
@@ -175,7 +167,7 @@ namespace ScriptEngine
                 SkipWhitespace();
                 if (PeekChar() == '?' && PeekChar(1) == '?')
                 {
-                    _position += 2; // consume ??
+                    _position += 2;
                     if (left != null && !IsSkipping)
                     {
                         BeginSkip();
@@ -193,7 +185,6 @@ namespace ScriptEngine
             return left;
         }
 
-        // B9: Short-circuit evaluation for ||
         private object ParseLogicalOr()
         {
             var left = ParseLogicalAnd();
@@ -203,7 +194,7 @@ namespace ScriptEngine
                 SkipWhitespace();
                 if (PeekChar() == '|' && PeekChar(1) == '|')
                 {
-                    _position += 2; // consume ||
+                    _position += 2;
                     bool leftBool = Convert.ToBoolean(left);
                     if (leftBool && !IsSkipping)
                     {
@@ -224,7 +215,6 @@ namespace ScriptEngine
             return left;
         }
 
-        // B9: Short-circuit evaluation for &&
         private object ParseLogicalAnd()
         {
             var left = ParseBitwiseOr();
@@ -234,7 +224,7 @@ namespace ScriptEngine
                 SkipWhitespace();
                 if (PeekChar() == '&' && PeekChar(1) == '&')
                 {
-                    _position += 2; // consume &&
+                    _position += 2;
                     bool leftBool = Convert.ToBoolean(left);
                     if (!leftBool && !IsSkipping)
                     {
@@ -255,7 +245,6 @@ namespace ScriptEngine
             return left;
         }
 
-        // B11: Use Int64 for bitwise operations to preserve precision
         private object ParseBitwiseOr()
         {
             var left = ParseBitwiseXor();
@@ -265,7 +254,7 @@ namespace ScriptEngine
                 SkipWhitespace();
                 if (PeekChar() == '|' && PeekChar(1) != '|')
                 {
-                    _position++; // consume |
+                    _position++;
                     var right = ParseBitwiseXor();
                     if (!IsSkipping)
                         left = Convert.ToInt64(left) | Convert.ToInt64(right);
@@ -285,7 +274,7 @@ namespace ScriptEngine
                 SkipWhitespace();
                 if (PeekChar() == '^')
                 {
-                    _position++; // consume ^
+                    _position++;
                     var right = ParseBitwiseAnd();
                     if (!IsSkipping)
                         left = Convert.ToInt64(left) ^ Convert.ToInt64(right);
@@ -305,7 +294,7 @@ namespace ScriptEngine
                 SkipWhitespace();
                 if (PeekChar() == '&' && PeekChar(1) != '&')
                 {
-                    _position++; // consume &
+                    _position++;
                     var right = ParseEquality();
                     if (!IsSkipping)
                         left = Convert.ToInt64(left) & Convert.ToInt64(right);
@@ -316,7 +305,6 @@ namespace ScriptEngine
             return left;
         }
 
-        // B1: Only == is equality operator (removed single = as equality)
         private object ParseEquality()
         {
             var left = ParseRelational();
@@ -326,14 +314,14 @@ namespace ScriptEngine
                 SkipWhitespace();
                 if (PeekChar() == '=' && PeekChar(1) == '=')
                 {
-                    _position += 2; // consume ==
+                    _position += 2;
                     var right = ParseRelational();
                     if (!IsSkipping)
                         left = Equals(left, right);
                 }
                 else if (PeekChar() == '!' && PeekChar(1) == '=')
                 {
-                    _position += 2; // consume !=
+                    _position += 2;
                     var right = ParseRelational();
                     if (!IsSkipping)
                         left = !Equals(left, right);
@@ -344,8 +332,6 @@ namespace ScriptEngine
             return left;
         }
 
-        // B11: Preserve precision for long and decimal
-        // B31: String comparison support
         private object ParseRelational()
         {
             var left = ParseShift();
@@ -406,7 +392,6 @@ namespace ScriptEngine
             }
         }
 
-        // B11: Use Int64 for shift operations
         private object ParseShift()
         {
             var left = ParseAdditive();
@@ -416,14 +401,14 @@ namespace ScriptEngine
                 SkipWhitespace();
                 if (PeekChar() == '<' && PeekChar(1) == '<')
                 {
-                    _position += 2; // consume <<
+                    _position += 2;
                     var right = ParseAdditive();
                     if (!IsSkipping)
                         left = Convert.ToInt64(left) << (int)Convert.ToInt64(right);
                 }
                 else if (PeekChar() == '>' && PeekChar(1) == '>')
                 {
-                    _position += 2; // consume >>
+                    _position += 2;
                     var right = ParseAdditive();
                     if (!IsSkipping)
                         left = Convert.ToInt64(left) >> (int)Convert.ToInt64(right);
@@ -443,14 +428,14 @@ namespace ScriptEngine
                 SkipWhitespace();
                 if (PeekChar() == '+' && PeekChar(1) != '+')
                 {
-                    _position++; // consume +
+                    _position++;
                     var right = ParseMultiplicative();
                     if (!IsSkipping)
                         left = Add(left, right);
                 }
                 else if (PeekChar() == '-' && PeekChar(1) != '-')
                 {
-                    _position++; // consume -
+                    _position++;
                     var right = ParseMultiplicative();
                     if (!IsSkipping)
                         left = Subtract(left, right);
@@ -470,21 +455,21 @@ namespace ScriptEngine
                 SkipWhitespace();
                 if (PeekChar() == '*' && PeekChar(1) != '*')
                 {
-                    _position++; // consume *
+                    _position++;
                     var right = ParseExponential();
                     if (!IsSkipping)
                         left = Multiply(left, right);
                 }
                 else if (PeekChar() == '/')
                 {
-                    _position++; // consume /
+                    _position++;
                     var right = ParseExponential();
                     if (!IsSkipping)
                         left = Divide(left, right);
                 }
                 else if (PeekChar() == '%')
                 {
-                    _position++; // consume %
+                    _position++;
                     var right = ParseExponential();
                     if (!IsSkipping)
                         left = Modulo(left, right);
@@ -495,7 +480,6 @@ namespace ScriptEngine
             return left;
         }
 
-        // B12: Right-associative (recursive call instead of loop)
         private object ParseExponential()
         {
             var left = ParseUnary();
@@ -503,8 +487,8 @@ namespace ScriptEngine
             SkipWhitespace();
             if (PeekChar() == '*' && PeekChar(1) == '*')
             {
-                _position += 2; // consume **
-                var right = ParseExponential(); // right-associative
+                _position += 2;
+                var right = ParseExponential();
                 if (!IsSkipping)
                     left = Math.Pow(Convert.ToDouble(left), Convert.ToDouble(right));
             }
@@ -512,12 +496,10 @@ namespace ScriptEngine
             return left;
         }
 
-        // B2: Fixed postfix ++/-- by peeking identifier before evaluating
         private object ParseUnary()
         {
             SkipWhitespace();
 
-            // Pre-increment / pre-decrement (check before single +/-)
             if (PeekChar() == '+' && PeekChar(1) == '+')
             {
                 _position += 2;
@@ -529,7 +511,6 @@ namespace ScriptEngine
                 return PreDecrement();
             }
 
-            // Unary +, -, !, ~
             if (PeekChar() == '+')
             {
                 _position++;
@@ -554,7 +535,6 @@ namespace ScriptEngine
                 return IsSkipping ? null : BitwiseNot(v);
             }
 
-            // Postfix: try to detect <identifier> (++ | --)
             int savedPos = _position;
             string peekedName = TryPeekIdentifier();
 
@@ -563,22 +543,20 @@ namespace ScriptEngine
                 SkipWhitespace();
                 if (PeekChar() == '+' && PeekChar(1) == '+')
                 {
-                    _position += 2; // consume ++
+                    _position += 2;
                     return PostIncrement(peekedName);
                 }
                 if (PeekChar() == '-' && PeekChar(1) == '-')
                 {
-                    _position += 2; // consume --
+                    _position += 2;
                     return PostDecrement(peekedName);
                 }
             }
 
-            // Not postfix, restore position
             _position = savedPos;
 
             var result = ParsePrimary();
 
-            // Detect unsupported postfix on non-identifier expressions (B13)
             SkipWhitespace();
             if (PeekChar() == '+' && PeekChar(1) == '+')
                 throw new FormatException("Postfix ++ is only supported on simple identifiers");
@@ -588,7 +566,6 @@ namespace ScriptEngine
             return result;
         }
 
-        // B3: Keywords use MatchWord with word boundary check
         private object ParsePrimary()
         {
             SkipWhitespace();
@@ -598,44 +575,36 @@ namespace ScriptEngine
 
             char c = _expression[_position];
 
-            // Number (including hex and binary - B17)
             if (char.IsDigit(c) || (c == '.' && _position + 1 < _expression.Length && char.IsDigit(_expression[_position + 1])))
                 return ParseNumber();
 
-            // String
             if (c == '"' || c == '\'')
                 return ParseString();
 
-            // Array
             if (c == '[')
                 return ParseArray();
 
-            // Parenthesized expression
             if (c == '(')
             {
-                _position++; // consume (
+                _position++;
                 var result = ParseExpression();
                 Expect(")");
                 return result;
             }
 
-            // Keywords (with word boundary - B3)
             if (MatchWord("true")) return true;
             if (MatchWord("false")) return false;
             if (MatchWord("null")) return null;
 
-            // Identifier (variable, function, member access)
             if (char.IsLetter(c) || c == '_')
                 return ParseIdentifier();
 
             throw new FormatException($"Unexpected character at position {_position}: '{c}' in expression: '{_expression}'");
         }
 
-        // B17: Hex (0x) and Binary (0b) number support
-        // B20: Fallback to decimal/double for very long numbers
         private object ParseNumber()
         {
-            // Hex: 0x...
+
             if (_position + 1 < _expression.Length && _expression[_position] == '0' &&
                 (_expression[_position + 1] == 'x' || _expression[_position + 1] == 'X'))
             {
@@ -643,7 +612,6 @@ namespace ScriptEngine
                 return ParseHexNumber();
             }
 
-            // Binary: 0b...
             if (_position + 1 < _expression.Length && _expression[_position] == '0' &&
                 (_expression[_position + 1] == 'b' || _expression[_position + 1] == 'B'))
             {
@@ -699,11 +667,9 @@ namespace ScriptEngine
                 if (long.TryParse(numberStr, out long longResult))
                     return longResult;
 
-                // Very long integers: fallback to decimal (B20)
                 if (decimal.TryParse(numberStr, NumberStyles.Any, CultureInfo.InvariantCulture, out decimal decResult))
                     return decResult;
 
-                // Final fallback to double
                 if (double.TryParse(numberStr, NumberStyles.Any, CultureInfo.InvariantCulture, out double dblResult))
                     return dblResult;
             }
@@ -754,11 +720,10 @@ namespace ScriptEngine
             return result;
         }
 
-        // B10: Fixed unterminated string detection
         private string ParseString()
         {
             char quoteChar = _expression[_position];
-            _position++; // consume opening quote
+            _position++;
 
             StringBuilder sb = new StringBuilder();
             bool escape = false;
@@ -869,7 +834,6 @@ namespace ScriptEngine
             return elements.ToArray();
         }
 
-        // B4, B5: Member access chaining and method call + member access
         private object ParseIdentifier()
         {
             string identifier = ParseIdentifierName();
@@ -882,7 +846,6 @@ namespace ScriptEngine
 
             object result;
 
-            // Function call
             if (_position < _expression.Length && _expression[_position] == '(')
             {
                 result = ParseFunctionCall(identifier);
@@ -892,7 +855,6 @@ namespace ScriptEngine
                 result = IsSkipping ? null : GetVariableValue(identifier);
             }
 
-            // Chained member access and method calls (a.b.c, a.b().c, now().Year, etc.)
             while (true)
             {
                 SkipWhitespace();
@@ -923,12 +885,10 @@ namespace ScriptEngine
             return _expression.Substring(start, _position - start);
         }
 
-        // B36: Special-case iif and coalesce for short-circuit evaluation
         private object ParseFunctionCall(string functionName)
         {
             Expect("(");
 
-            // Special-case iif and coalesce for short-circuit evaluation
             if (string.Equals(functionName, "iif", StringComparison.OrdinalIgnoreCase))
             {
                 return ParseIif();
@@ -970,10 +930,9 @@ namespace ScriptEngine
             throw new FormatException($"Unknown function: '{functionName}'");
         }
 
-        // B36: iif with short-circuit evaluation
         private object ParseIif()
         {
-            // iif(condition, trueValue, falseValue) with short-circuit evaluation
+
             object condition = ParseExpression();
             Expect(",");
 
@@ -1009,10 +968,9 @@ namespace ScriptEngine
             }
         }
 
-        // B36: coalesce with short-circuit evaluation
         private object ParseCoalesce()
         {
-            // coalesce(a, b, c, ...) - returns first non-null, with short-circuit
+
             object result = null;
             bool found = false;
 
@@ -1044,26 +1002,22 @@ namespace ScriptEngine
             return result;
         }
 
-        // B4: Member access chaining support
         private object ParseMemberAccess(object target)
         {
             string memberName = ParseIdentifierName();
             SkipWhitespace();
 
-            // Method call
             if (_position < _expression.Length && _expression[_position] == '(')
             {
                 return ParseMethodCall(target, memberName);
             }
 
-            // Property/field access
             if (IsSkipping)
                 return null;
 
             return GetMemberValue(target, memberName);
         }
 
-        // B8: Reflection security check
         private object ParseMethodCall(object target, string methodName)
         {
             Expect("(");
@@ -1087,7 +1041,6 @@ namespace ScriptEngine
             if (target == null)
                 throw new FormatException($"Cannot call method '{methodName}' on null target");
 
-            // Security check (B8)
             ScriptEngineSecurity.CheckReflectionAllowed(target.GetType());
 
             try
@@ -1109,13 +1062,11 @@ namespace ScriptEngine
             }
         }
 
-        // B8: Reflection security check
         private object GetMemberValue(object target, string memberName)
         {
             if (target == null)
                 throw new FormatException($"Cannot access member '{memberName}' on null target");
 
-            // Security check (B8)
             ScriptEngineSecurity.CheckReflectionAllowed(target.GetType());
 
             try
@@ -1144,7 +1095,7 @@ namespace ScriptEngine
 
         private object GetVariableValue(string variableName)
         {
-            // اولویت با متغیرهای محلی، سپس متغیرهای سراسری
+
             if (_localVariables.TryGetValue(variableName, out object value))
             {
                 return value;
@@ -1158,7 +1109,6 @@ namespace ScriptEngine
             throw new FormatException($"Unknown variable: '{variableName}'");
         }
 
-        // B11: Arithmetic with type preservation (long, decimal, double)
         private object Add(object left, object right)
         {
             if (left is string || right is string)
@@ -1226,8 +1176,8 @@ namespace ScriptEngine
                 long r = Convert.ToInt64(right);
                 if (r == 0) throw new DivideByZeroException("Division by zero");
                 if (l % r == 0)
-                    return l / r; // exact division, keep as long
-                return (double)l / (double)r; // inexact, return double
+                    return l / r;
+                return (double)l / (double)r;
             }
 
             double dr = Convert.ToDouble(right);
@@ -1319,7 +1269,6 @@ namespace ScriptEngine
             return newValue;
         }
 
-        // B2: Fixed - takes variable name directly instead of trying to extract from value
         private object PostIncrement(string varName)
         {
             if (IsSkipping) return null;
@@ -1350,14 +1299,12 @@ namespace ScriptEngine
             return Convert.ToDouble(value) + delta;
         }
 
-        // B7: Propagate variable changes to executor via callback
         private void SetVariableValue(string varName, object value)
         {
             _localVariables[varName] = value;
             _setVariableCallback?.Invoke(varName, value);
         }
 
-        // B18: Support line (//) and block (/* */) comments
         private void SkipWhitespace()
         {
             while (_position < _expression.Length)
@@ -1370,14 +1317,14 @@ namespace ScriptEngine
                 }
                 else if (c == '/' && _position + 1 < _expression.Length && _expression[_position + 1] == '/')
                 {
-                    // Line comment
+
                     _position += 2;
                     while (_position < _expression.Length && _expression[_position] != '\n')
                         _position++;
                 }
                 else if (c == '/' && _position + 1 < _expression.Length && _expression[_position + 1] == '*')
                 {
-                    // Block comment
+
                     _position += 2;
                     bool closed = false;
                     while (_position + 1 < _expression.Length)
@@ -1418,7 +1365,6 @@ namespace ScriptEngine
             return matches;
         }
 
-        // B3: Match keywords with word boundary check
         private bool MatchWord(string expected)
         {
             SkipWhitespace();
@@ -1430,7 +1376,6 @@ namespace ScriptEngine
             if (!string.Equals(actual, expected, StringComparison.OrdinalIgnoreCase))
                 return false;
 
-            // Check word boundary
             int nextPos = _position + expected.Length;
             if (nextPos < _expression.Length)
             {

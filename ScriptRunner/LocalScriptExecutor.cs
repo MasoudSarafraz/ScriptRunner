@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
@@ -16,13 +16,8 @@ namespace ScriptEngine
         private readonly ReaderWriterLockSlim _lock = new ReaderWriterLockSlim(LockRecursionPolicy.NoRecursion);
         private EventHandler<ErrorEventArgs> _onError;
 
-        // B35: Global unhandled error handler (static, overrides console output)
         private static volatile Action<Exception> _globalUnhandledErrorHandler;
 
-        /// <summary>
-        /// Gets or sets a global handler for unhandled errors when no OnError subscriber is attached.
-        /// If null (default), errors are written to Console.Error.
-        /// </summary>
         public static Action<Exception> GlobalUnhandledErrorHandler
         {
             get => _globalUnhandledErrorHandler;
@@ -69,7 +64,7 @@ namespace ScriptEngine
 
         private void AddDefaultFunctions()
         {
-            // توابع ریاضی
+
             AddGlobalFunction("sqrt", parameters => Math.Sqrt(Convert.ToDouble(parameters[0])));
             AddGlobalFunction("pow", parameters => Math.Pow(Convert.ToDouble(parameters[0]), Convert.ToDouble(parameters[1])));
             AddGlobalFunction("abs", parameters => Math.Abs(Convert.ToDouble(parameters[0])));
@@ -83,7 +78,7 @@ namespace ScriptEngine
                 parameters.Length == 1 ? Math.Log(Convert.ToDouble(parameters[0])) :
                 Math.Log(Convert.ToDouble(parameters[0]), Convert.ToDouble(parameters[1])));
             AddGlobalFunction("log10", parameters => Math.Log10(Convert.ToDouble(parameters[0])));
-            // توابع مثلثاتی
+
             AddGlobalFunction("sin", parameters => Math.Sin(Convert.ToDouble(parameters[0])));
             AddGlobalFunction("cos", parameters => Math.Cos(Convert.ToDouble(parameters[0])));
             AddGlobalFunction("tan", parameters => Math.Tan(Convert.ToDouble(parameters[0])));
@@ -91,8 +86,7 @@ namespace ScriptEngine
             AddGlobalFunction("acos", parameters => Math.Acos(Convert.ToDouble(parameters[0])));
             AddGlobalFunction("atan", parameters => Math.Atan(Convert.ToDouble(parameters[0])));
             AddGlobalFunction("atan2", parameters => Math.Atan2(Convert.ToDouble(parameters[0]), Convert.ToDouble(parameters[1])));
-            // توابع رشته‌ای
-            // B21: Handle null input for length
+
             AddGlobalFunction("length", parameters =>
             {
                 if (parameters[0] == null) return 0;
@@ -103,15 +97,13 @@ namespace ScriptEngine
             AddGlobalFunction("tolower", parameters => ((string)parameters[0]).ToLower());
             AddGlobalFunction("trim", parameters => ((string)parameters[0]).Trim());
             AddGlobalFunction("concat", parameters => string.Concat(parameters.Select(p => p?.ToString())));
-            // توابع تاریخ و زمان
+
             AddGlobalFunction("now", parameters => DateTime.Now);
             AddGlobalFunction("today", parameters => DateTime.Today);
             AddGlobalFunction("year", parameters => ((DateTime)parameters[0]).Year);
             AddGlobalFunction("month", parameters => ((DateTime)parameters[0]).Month);
             AddGlobalFunction("day", parameters => ((DateTime)parameters[0]).Day);
 
-            // توابع شرطی
-            // B23: Validate parameter count for iif
             AddGlobalFunction("iif", parameters =>
             {
                 if (parameters.Length != 3)
@@ -122,16 +114,16 @@ namespace ScriptEngine
             AddGlobalFunction("isnull", parameters => parameters[0] == null);
             AddGlobalFunction("isnumber", parameters => IsNumber(parameters[0]));
             AddGlobalFunction("isstring", parameters => parameters[0] is string);
-            // توابع آرایه
+
             AddGlobalFunction("array", parameters => parameters);
-            // B28: Throw on non-array input instead of returning 1
+
             AddGlobalFunction("count", parameters =>
             {
                 if (parameters[0] is Array array) return array.Length;
                 if (parameters[0] is IEnumerable<object> enumerable) return enumerable.Count();
                 throw new ArgumentException("count() requires an array or enumerable");
             });
-            // B22: Handle empty arrays for aggregate functions
+
             AddGlobalFunction("sum", parameters =>
             {
                 if (parameters[0] is Array array)
@@ -407,7 +399,6 @@ namespace ScriptEngine
             return localVariables.TryRemove(name, out _);
         }
 
-        // B7: Callback for parser to propagate variable changes back to executor
         private void SetVariableFromParser(string name, object value)
         {
             var locals = _threadLocalVariables.Value;
@@ -431,7 +422,6 @@ namespace ScriptEngine
                 return;
             }
 
-            // New variable: create as thread-local
             locals.AddOrUpdate(name, value, (k, old) => value);
         }
 
@@ -441,10 +431,10 @@ namespace ScriptEngine
             {
                 return null;
             }
-            // ترکیب توابع و متغیرهای عمومی و thread-local
+
             var combinedFunctions = new ConcurrentDictionary<string, Func<object[], object>>(StringComparer.OrdinalIgnoreCase);
             var combinedVariables = new ConcurrentDictionary<string, object>(StringComparer.OrdinalIgnoreCase);
-            // اضافه کردن توابع و متغیرهای عمومی
+
             _lock.EnterReadLock();
             try
             {
@@ -462,7 +452,7 @@ namespace ScriptEngine
             {
                 _lock.ExitReadLock();
             }
-            // اضافه کردن توابع و متغیرهای مخصوص thread جاری (با اولویت بالاتر)
+
             var localFunctions = _threadLocalFunctions.Value;
             var localVariables = _threadLocalVariables.Value;
 
@@ -477,7 +467,7 @@ namespace ScriptEngine
             }
             try
             {
-                // B7: Pass callback so var declarations and assignments persist
+
                 var parser = new ScriptParser(expression, combinedFunctions, combinedVariables, SetVariableFromParser);
                 return parser.Evaluate();
             }
@@ -488,9 +478,6 @@ namespace ScriptEngine
             }
         }
 
-        // B6, B16: Safe Dispose - does not kill singleton resources
-        // Clears only the current thread's local state.
-        // Global functions/variables and singleton infrastructure are preserved.
         public void Dispose()
         {
             _lock.EnterWriteLock();
@@ -503,22 +490,18 @@ namespace ScriptEngine
                 _lock.ExitWriteLock();
             }
 
-            // Clear thread-local state for the current thread only
-            // Note: For singleton executor, global state and shared infrastructure
-            // (ThreadLocal, locks) are NOT disposed to keep the singleton usable.
             if (_threadLocalFunctions.IsValueCreated)
             {
                 try { _threadLocalFunctions.Value.Clear(); }
-                catch { /* ignore */ }
+                catch {   }
             }
             if (_threadLocalVariables.IsValueCreated)
             {
                 try { _threadLocalVariables.Value.Clear(); }
-                catch { /* ignore */ }
+                catch {   }
             }
         }
 
-        // B35: Use global handler if set, otherwise console
         private void RaiseError(Exception exception)
         {
             var handler = _onError;
@@ -531,7 +514,7 @@ namespace ScriptEngine
                 }
                 catch
                 {
-                    // Ignore
+
                 }
             }
             else
@@ -545,7 +528,7 @@ namespace ScriptEngine
                     }
                     catch
                     {
-                        // Ignore
+
                     }
                 }
                 else
@@ -560,7 +543,7 @@ namespace ScriptEngine
                     }
                     catch
                     {
-                        //Ignore
+
                     }
                 }
             }
