@@ -503,7 +503,7 @@ namespace ScriptEngine.Tests
         public void ErrorHandling_PropagatesException()
         {
             var engine = ScriptEngineFactory.CreateLocalScriptEngine();
-            Assert.Throws<FormatException>(() => engine.Run("1 / 0"));
+            Assert.Throws<DivideByZeroException>(() => engine.Run("1 / 0"));
         }
 
         [Fact]

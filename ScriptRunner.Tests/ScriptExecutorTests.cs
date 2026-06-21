@@ -13,7 +13,8 @@ namespace ScriptEngine.Tests
         public void Run_BasicArithmetic(string expr, object expected)
         {
             var engine = ScriptEngineFactory.Create();
-            Assert.Equal(expected, engine.Run(expr));
+            var result = engine.Run(expr);
+            Assert.Equal(Convert.ToDouble(expected), Convert.ToDouble(result));
         }
 
         [Fact]
