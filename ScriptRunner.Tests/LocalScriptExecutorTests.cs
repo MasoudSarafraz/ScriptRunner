@@ -9,16 +9,17 @@ namespace ScriptEngine.Tests
         private void CleanupVariables()
         {
             var engine = ScriptEngineFactory.CreateLocalScriptEngine();
-            engine.RemoveLocalThreadVariable("x");
-            engine.RemoveLocalThreadVariable("y");
-            engine.RemoveLocalThreadVariable("counter");
-            engine.RemoveLocalThreadVariable("total");
-            engine.RemoveLocalThreadVariable("temp");
-            engine.RemoveGlobalVariable("x");
-            engine.RemoveGlobalVariable("y");
-            engine.RemoveGlobalVariable("counter");
-            engine.RemoveGlobalVariable("total");
-            engine.RemoveGlobalVariable("temp");
+            object _;
+            engine.TryRemoveLocalThreadVariable("x", out _);
+            engine.TryRemoveLocalThreadVariable("y", out _);
+            engine.TryRemoveLocalThreadVariable("counter", out _);
+            engine.TryRemoveLocalThreadVariable("total", out _);
+            engine.TryRemoveLocalThreadVariable("temp", out _);
+            engine.TryRemoveGlobalVariable("x", out _);
+            engine.TryRemoveGlobalVariable("y", out _);
+            engine.TryRemoveGlobalVariable("counter", out _);
+            engine.TryRemoveGlobalVariable("total", out _);
+            engine.TryRemoveGlobalVariable("temp", out _);
             engine.RemoveCustomFunction("sqrt");
             engine.RemoveCustomFunction("temp");
             engine.RemoveCustomFunction("square");
@@ -275,7 +276,7 @@ namespace ScriptEngine.Tests
             CleanupVariables();
             var engine = ScriptEngineFactory.CreateLocalScriptEngine();
             engine.SetGlobalVariable("temp", 99);
-            Assert.True(engine.RemoveGlobalVariable("temp"));
+            Assert.True(engine.TryRemoveGlobalVariable("temp", out _));
             Assert.ThrowsAny<Exception>(() => engine.Run("temp"));
         }
 
@@ -283,14 +284,14 @@ namespace ScriptEngine.Tests
         public void GlobalVariable_Remove_NonExistent_ReturnsFalse()
         {
             var engine = ScriptEngineFactory.CreateLocalScriptEngine();
-            Assert.False(engine.RemoveGlobalVariable("nonexistent"));
+            Assert.False(engine.TryRemoveGlobalVariable("nonexistent", out _));
         }
 
         [Fact]
-        public void GlobalVariable_Get_NonExistent_ReturnsNull()
+        public void GlobalVariable_Get_NonExistent_ReturnsFalse()
         {
             var engine = ScriptEngineFactory.CreateLocalScriptEngine();
-            Assert.Null(engine.GetGlobalVariable("nonexistent"));
+            Assert.False(engine.TryGetGlobalVariable("nonexistent", out _));
         }
 
         [Fact]
@@ -315,7 +316,7 @@ namespace ScriptEngine.Tests
             CleanupVariables();
             var engine = ScriptEngineFactory.CreateLocalScriptEngine();
             engine.SetThreadLocalVariable("temp", 1);
-            Assert.True(engine.RemoveLocalThreadVariable("temp"));
+            Assert.True(engine.TryRemoveLocalThreadVariable("temp", out _));
         }
 
         [Fact]
@@ -449,7 +450,8 @@ namespace ScriptEngine.Tests
             var engine = ScriptEngineFactory.CreateLocalScriptEngine();
             engine.SetGlobalVariable("x", 10);
             engine.Run("x = 50");
-            Assert.Equal(50, engine.GetGlobalVariable("x"));
+            Assert.True(engine.TryGetGlobalVariable("x", out var xValue));
+            Assert.Equal(50, xValue);
         }
 
         [Fact]

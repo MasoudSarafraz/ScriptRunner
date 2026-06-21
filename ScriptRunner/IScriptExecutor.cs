@@ -39,14 +39,18 @@ namespace ScriptEngine
 
         void SetGlobalVariable(string name, object value);
 
-        object GetGlobalVariable(string name);
+        bool TryGetGlobalVariable(string name, out object value);
 
-        bool RemoveGlobalVariable(string name);
+        bool TryRemoveGlobalVariable(string name, out object oldValue);
+
+        bool ContainsGlobalVariable(string name);
 
         void SetThreadLocalVariable(string name, object value);
 
-        object GetThreadLocalVariable(string name);
+        bool TryGetThreadLocalVariable(string name, out object value);
 
-        bool RemoveLocalThreadVariable(string name);
+        bool TryRemoveThreadLocalVariable(string name, out object oldValue);
+
+        bool ContainsThreadLocalVariable(string name);
     }
 }

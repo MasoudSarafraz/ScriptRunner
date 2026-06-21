@@ -13,16 +13,17 @@ namespace ScriptEngine.Tests
         private void CleanupVariables()
         {
             var engine = ScriptEngineFactory.CreateLocalScriptEngine();
-            engine.RemoveLocalThreadVariable("x");
-            engine.RemoveLocalThreadVariable("y");
-            engine.RemoveLocalThreadVariable("counter");
-            engine.RemoveLocalThreadVariable("total");
-            engine.RemoveLocalThreadVariable("temp");
-            engine.RemoveGlobalVariable("x");
-            engine.RemoveGlobalVariable("y");
-            engine.RemoveGlobalVariable("counter");
-            engine.RemoveGlobalVariable("total");
-            engine.RemoveGlobalVariable("temp");
+            object _;
+            engine.TryRemoveLocalThreadVariable("x", out _);
+            engine.TryRemoveLocalThreadVariable("y", out _);
+            engine.TryRemoveLocalThreadVariable("counter", out _);
+            engine.TryRemoveLocalThreadVariable("total", out _);
+            engine.TryRemoveLocalThreadVariable("temp", out _);
+            engine.TryRemoveGlobalVariable("x", out _);
+            engine.TryRemoveGlobalVariable("y", out _);
+            engine.TryRemoveGlobalVariable("counter", out _);
+            engine.TryRemoveGlobalVariable("total", out _);
+            engine.TryRemoveGlobalVariable("temp", out _);
             engine.RemoveCustomFunction("sqrt");
             engine.RemoveCustomFunction("temp");
             engine.RemoveCustomFunction("square");
@@ -119,7 +120,7 @@ namespace ScriptEngine.Tests
 
             foreach (var t in threads) t.Join();
 
-            var finalValue = engine.GetGlobalVariable("counter");
+            Assert.True(engine.TryGetGlobalVariable("counter", out var finalValue));
             Assert.IsType<int>(finalValue);
             int intVal = (int)finalValue;
             Assert.True(intVal >= 0 && intVal < 50);
@@ -669,7 +670,7 @@ namespace ScriptEngine.Tests
                     {
                         for (int j = 0; j < 100; j++)
                         {
-                            engine.GetGlobalVariable("rw");
+                            engine.TryGetGlobalVariable("rw", out _);
                         }
                     }
                     catch (Exception ex)

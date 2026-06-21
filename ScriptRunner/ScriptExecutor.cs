@@ -274,12 +274,17 @@ namespace ScriptEngine
             }
         }
 
-        public object GetGlobalVariable(string name)
+        public bool TryGetGlobalVariable(string name, out object value)
         {
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                value = null;
+                return false;
+            }
             _lock.EnterReadLock();
             try
             {
-                return _globalVariables.TryGetValue(name, out object value) ? value : null;
+                return _globalVariables.TryGetValue(name, out value);
             }
             finally
             {
@@ -287,18 +292,36 @@ namespace ScriptEngine
             }
         }
 
-        public bool RemoveGlobalVariable(string name)
+        public bool TryRemoveGlobalVariable(string name, out object oldValue)
         {
             if (string.IsNullOrWhiteSpace(name))
+            {
+                oldValue = null;
                 return false;
+            }
             _lock.EnterWriteLock();
             try
             {
-                return _globalVariables.TryRemove(name, out _);
+                return _globalVariables.TryRemove(name, out oldValue);
             }
             finally
             {
                 _lock.ExitWriteLock();
+            }
+        }
+
+        public bool ContainsGlobalVariable(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+                return false;
+            _lock.EnterReadLock();
+            try
+            {
+                return _globalVariables.ContainsKey(name);
+            }
+            finally
+            {
+                _lock.ExitReadLock();
             }
         }
 
@@ -310,18 +333,34 @@ namespace ScriptEngine
             localVariables.AddOrUpdate(name, value, (key, oldValue) => value);
         }
 
-        public object GetThreadLocalVariable(string name)
+        public bool TryGetThreadLocalVariable(string name, out object value)
         {
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                value = null;
+                return false;
+            }
             var localVariables = _threadLocalVariables.Value;
-            return localVariables.TryGetValue(name, out object value) ? value : null;
+            return localVariables.TryGetValue(name, out value);
         }
 
-        public bool RemoveLocalThreadVariable(string name)
+        public bool TryRemoveThreadLocalVariable(string name, out object oldValue)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                oldValue = null;
+                return false;
+            }
+            var localVariables = _threadLocalVariables.Value;
+            return localVariables.TryRemove(name, out oldValue);
+        }
+
+        public bool ContainsThreadLocalVariable(string name)
         {
             if (string.IsNullOrWhiteSpace(name))
                 return false;
             var localVariables = _threadLocalVariables.Value;
-            return localVariables.TryRemove(name, out _);
+            return localVariables.ContainsKey(name);
         }
 
         private void RaiseError(Exception exception)
