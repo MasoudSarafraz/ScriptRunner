@@ -18,13 +18,6 @@ namespace ScriptEngine
         private readonly ReaderWriterLockSlim _lock = new ReaderWriterLockSlim(LockRecursionPolicy.NoRecursion);
         private EventHandler<ErrorEventArgs> _onError;
 
-        private static volatile Action<Exception> _globalUnhandledErrorHandler;
-
-        public static Action<Exception> GlobalUnhandledErrorHandler
-        {
-            get => _globalUnhandledErrorHandler;
-            set => _globalUnhandledErrorHandler = value;
-        }
         public event EventHandler<ErrorEventArgs> OnError
         {
             add
@@ -186,6 +179,7 @@ namespace ScriptEngine
             }
 
             var combinedFunctions = new ConcurrentDictionary<string, Func<object[], object>>(StringComparer.OrdinalIgnoreCase);
+            var combinedVariables = new ConcurrentDictionary<string, object>(StringComparer.OrdinalIgnoreCase);
 
             _lock.EnterReadLock();
             try
@@ -194,6 +188,11 @@ namespace ScriptEngine
                 {
                     combinedFunctions.TryAdd(func.Key, func.Value);
                 }
+
+                foreach (var variable in _globalVariables)
+                {
+                    combinedVariables.TryAdd(variable.Key, variable.Value);
+                }
             }
             finally
             {
@@ -201,9 +200,16 @@ namespace ScriptEngine
             }
 
             var localFunctions = _threadLocalFunctions.Value;
+            var localVariables = _threadLocalVariables.Value;
+
             foreach (var func in localFunctions)
             {
                 combinedFunctions.AddOrUpdate(func.Key, func.Value, (key, oldValue) => func.Value);
+            }
+
+            foreach (var variable in localVariables)
+            {
+                combinedVariables.AddOrUpdate(variable.Key, variable.Value, (key, oldValue) => variable.Value);
             }
             try
             {
@@ -224,6 +230,13 @@ namespace ScriptEngine
                     else
                     {
                         throw new Exception($"Function '{name}' is not defined");
+                    }
+                };
+                expr.EvaluateParameter += (name, args) =>
+                {
+                    if (combinedVariables.TryGetValue(name, out object value))
+                    {
+                        args.Result = value;
                     }
                 };
                 return expr.Evaluate();
@@ -379,7 +392,7 @@ namespace ScriptEngine
             }
             else
             {
-                var global = _globalUnhandledErrorHandler;
+                var global = ScriptEngineOptions.GlobalUnhandledErrorHandler;
                 if (global != null)
                 {
                     try

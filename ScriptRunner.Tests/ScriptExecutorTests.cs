@@ -132,27 +132,6 @@ namespace ScriptEngine.Tests
         }
 
         [Fact]
-        public void GlobalUnhandledErrorHandler_Static()
-        {
-            var engine = ScriptEngineFactory.Create();
-            engine.Dispose();
-
-            Exception caught = null;
-            ScriptExecutor.GlobalUnhandledErrorHandler = ex => caught = ex;
-
-            try
-            {
-                var engine2 = ScriptEngineFactory.Create();
-                try { engine2.Run("@@@invalid"); } catch { }
-                Assert.NotNull(caught);
-            }
-            finally
-            {
-                ScriptExecutor.GlobalUnhandledErrorHandler = null;
-            }
-        }
-
-        [Fact]
         public void NestedFunctionCalls()
         {
             var engine = ScriptEngineFactory.Create();
@@ -182,6 +161,153 @@ namespace ScriptEngine.Tests
         {
             var engine = ScriptEngineFactory.Create();
             Assert.False(engine.RemoveCustomFunction("nonexistent"));
+        }
+
+        [Fact]
+        public void GlobalVariable_SetAndGet()
+        {
+            var engine = ScriptEngineFactory.Create();
+            engine.SetGlobalVariable("x", 42);
+            Assert.True(engine.TryGetGlobalVariable("x", out var value));
+            Assert.Equal(42, value);
+        }
+
+        [Fact]
+        public void GlobalVariable_Get_NonExistent_ReturnsFalse()
+        {
+            var engine = ScriptEngineFactory.Create();
+            Assert.False(engine.TryGetGlobalVariable("nonexistent", out _));
+        }
+
+        [Fact]
+        public void GlobalVariable_Remove()
+        {
+            var engine = ScriptEngineFactory.Create();
+            engine.SetGlobalVariable("temp", 99);
+            Assert.True(engine.TryRemoveGlobalVariable("temp", out var oldValue));
+            Assert.Equal(99, oldValue);
+        }
+
+        [Fact]
+        public void GlobalVariable_Remove_NonExistent_ReturnsFalse()
+        {
+            var engine = ScriptEngineFactory.Create();
+            Assert.False(engine.TryRemoveGlobalVariable("nonexistent", out _));
+        }
+
+        [Fact]
+        public void GlobalVariable_Contains()
+        {
+            var engine = ScriptEngineFactory.Create();
+            engine.SetGlobalVariable("x", 1);
+            Assert.True(engine.ContainsGlobalVariable("x"));
+            Assert.False(engine.ContainsGlobalVariable("nonexistent"));
+        }
+
+        [Fact]
+        public void GlobalVariable_Set_EmptyName_Throws()
+        {
+            var engine = ScriptEngineFactory.Create();
+            Assert.Throws<ArgumentException>(() => engine.SetGlobalVariable("", 1));
+        }
+
+        [Fact]
+        public void GlobalVariable_UsedInExpression()
+        {
+            var engine = ScriptEngineFactory.Create();
+            engine.SetGlobalVariable("x", 10);
+            engine.SetGlobalVariable("y", 20);
+            Assert.Equal(30, engine.Run("x + y"));
+        }
+
+        [Fact]
+        public void GlobalVariable_UpdateExisting()
+        {
+            var engine = ScriptEngineFactory.Create();
+            engine.SetGlobalVariable("x", 1);
+            engine.SetGlobalVariable("x", 99);
+            Assert.True(engine.TryGetGlobalVariable("x", out var value));
+            Assert.Equal(99, value);
+        }
+
+        [Fact]
+        public void GlobalVariable_NullValue()
+        {
+            var engine = ScriptEngineFactory.Create();
+            engine.SetGlobalVariable("x", null);
+            Assert.True(engine.TryGetGlobalVariable("x", out var value));
+            Assert.Null(value);
+        }
+
+        [Fact]
+        public void ThreadLocalVariable_SetAndGet()
+        {
+            var engine = ScriptEngineFactory.Create();
+            engine.SetThreadLocalVariable("y", 77);
+            Assert.True(engine.TryGetThreadLocalVariable("y", out var value));
+            Assert.Equal(77, value);
+        }
+
+        [Fact]
+        public void ThreadLocalVariable_Remove()
+        {
+            var engine = ScriptEngineFactory.Create();
+            engine.SetThreadLocalVariable("temp", 1);
+            Assert.True(engine.TryRemoveLocalThreadVariable("temp", out var oldValue));
+            Assert.Equal(1, oldValue);
+        }
+
+        [Fact]
+        public void ThreadLocalVariable_Remove_NonExistent_ReturnsFalse()
+        {
+            var engine = ScriptEngineFactory.Create();
+            Assert.False(engine.TryRemoveLocalThreadVariable("nonexistent", out _));
+        }
+
+        [Fact]
+        public void ThreadLocalVariable_Get_NonExistent_ReturnsFalse()
+        {
+            var engine = ScriptEngineFactory.Create();
+            Assert.False(engine.TryGetThreadLocalVariable("nonexistent", out _));
+        }
+
+        [Fact]
+        public void ThreadLocalVariable_Contains()
+        {
+            var engine = ScriptEngineFactory.Create();
+            engine.SetThreadLocalVariable("x", 1);
+            Assert.True(engine.ContainsLocalThreadVariable("x"));
+            Assert.False(engine.ContainsLocalThreadVariable("nonexistent"));
+        }
+
+        [Fact]
+        public void ThreadLocalVariable_OverridesGlobalInExpression()
+        {
+            var engine = ScriptEngineFactory.Create();
+            engine.SetGlobalVariable("x", 1);
+            engine.SetThreadLocalVariable("x", 2);
+            Assert.Equal(2, engine.Run("x"));
+        }
+
+        [Fact]
+        public void GlobalUnhandledErrorHandler_Static()
+        {
+            var engine = ScriptEngineFactory.Create();
+            engine.Dispose();
+
+            Exception caught = null;
+            ScriptEngineOptions.GlobalUnhandledErrorHandler = ex => caught = ex;
+
+            try
+            {
+                var engine2 = ScriptEngineFactory.Create();
+                try { engine2.Run("@@@invalid"); } catch { }
+                Assert.NotNull(caught);
+            }
+            finally
+            {
+                ScriptEngineOptions.GlobalUnhandledErrorHandler = null;
+            }
         }
     }
 }

@@ -592,13 +592,7 @@ namespace ScriptEngine.Tests
                 t.Join();
             }
 
-            var resultThread = new Thread(() =>
-            {
-            });
-            resultThread.Start();
-            resultThread.Join();
-
-            Assert.True(true);
+            Assert.False(engine.TryGetThreadLocalVariable("iter", out _));
         }
 
         [Fact]

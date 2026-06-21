@@ -124,7 +124,7 @@ engine.OnError += (sender, e) =>
 };
 
 // Or set a global handler (used when no OnError subscriber exists)
-LocalScriptExecutor.GlobalUnhandledErrorHandler = ex =>
+ScriptEngineOptions.GlobalUnhandledErrorHandler = ex =>
 {
     logger.LogError(ex, "Script execution error");
 };

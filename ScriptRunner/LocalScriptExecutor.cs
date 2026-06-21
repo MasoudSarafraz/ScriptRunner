@@ -16,14 +16,6 @@ namespace ScriptEngine
         private readonly ReaderWriterLockSlim _lock = new ReaderWriterLockSlim(LockRecursionPolicy.NoRecursion);
         private EventHandler<ErrorEventArgs> _onError;
 
-        private static volatile Action<Exception> _globalUnhandledErrorHandler;
-
-        public static Action<Exception> GlobalUnhandledErrorHandler
-        {
-            get => _globalUnhandledErrorHandler;
-            set => _globalUnhandledErrorHandler = value;
-        }
-
         public event EventHandler<ErrorEventArgs> OnError
         {
             add
@@ -556,7 +548,7 @@ namespace ScriptEngine
             }
             else
             {
-                var global = _globalUnhandledErrorHandler;
+                var global = ScriptEngineOptions.GlobalUnhandledErrorHandler;
                 if (global != null)
                 {
                     try

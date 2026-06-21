@@ -114,13 +114,14 @@ namespace ScriptEngine.Tests
             Assert.Equal(0, engine.Run("length(x)"));
         }
 
-        [Theory]
-        [InlineData("year(now())", 0)]
-        public void BuiltIn_DateFunctions(string expr, int _)
+        [Fact]
+        public void BuiltIn_DateFunctions()
         {
             var engine = ScriptEngineFactory.CreateLocalScriptEngine();
             var now = DateTime.Now;
             Assert.Equal(now.Year, engine.Run("year(now())"));
+            Assert.Equal(now.Month, engine.Run("month(now())"));
+            Assert.Equal(now.Day, engine.Run("day(now())"));
         }
 
         [Theory]
@@ -512,7 +513,7 @@ namespace ScriptEngine.Tests
         public void GlobalUnhandledErrorHandler_Static()
         {
             Exception caught = null;
-            LocalScriptExecutor.GlobalUnhandledErrorHandler = ex => caught = ex;
+            ScriptEngineOptions.GlobalUnhandledErrorHandler = ex => caught = ex;
 
             try
             {
@@ -522,7 +523,7 @@ namespace ScriptEngine.Tests
             }
             finally
             {
-                LocalScriptExecutor.GlobalUnhandledErrorHandler = null;
+                ScriptEngineOptions.GlobalUnhandledErrorHandler = null;
             }
         }
 
