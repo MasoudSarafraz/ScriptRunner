@@ -12,8 +12,9 @@ namespace ScriptEngine
         private static readonly Lazy<ScriptExecutor> _instance = new Lazy<ScriptExecutor>(() => new ScriptExecutor());
 
         private readonly ConcurrentDictionary<string, Func<object[], object>> _globalFunctions;
-
+        private readonly ConcurrentDictionary<string, object> _globalVariables;
         private readonly ThreadLocal<ConcurrentDictionary<string, Func<object[], object>>> _threadLocalFunctions;
+        private readonly ThreadLocal<ConcurrentDictionary<string, object>> _threadLocalVariables;
         private readonly ReaderWriterLockSlim _lock = new ReaderWriterLockSlim(LockRecursionPolicy.NoRecursion);
         private EventHandler<ErrorEventArgs> _onError;
 
@@ -54,7 +55,9 @@ namespace ScriptEngine
         private ScriptExecutor()
         {
             _globalFunctions = new ConcurrentDictionary<string, Func<object[], object>>(StringComparer.OrdinalIgnoreCase);
+            _globalVariables = new ConcurrentDictionary<string, object>(StringComparer.OrdinalIgnoreCase);
             _threadLocalFunctions = new ThreadLocal<ConcurrentDictionary<string, Func<object[], object>>>(() => new ConcurrentDictionary<string, Func<object[], object>>(StringComparer.OrdinalIgnoreCase));
+            _threadLocalVariables = new ThreadLocal<ConcurrentDictionary<string, object>>(() => new ConcurrentDictionary<string, object>(StringComparer.OrdinalIgnoreCase));
 
         }
         public static IScriptExecutor Instance => _instance.Value;
@@ -249,6 +252,76 @@ namespace ScriptEngine
                 try { _threadLocalFunctions.Value.Clear(); }
                 catch {   }
             }
+            if (_threadLocalVariables.IsValueCreated)
+            {
+                try { _threadLocalVariables.Value.Clear(); }
+                catch {   }
+            }
+        }
+
+        public void SetGlobalVariable(string name, object value)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+                throw new ArgumentException("Variable name cannot be null or empty", nameof(name));
+            _lock.EnterWriteLock();
+            try
+            {
+                _globalVariables.AddOrUpdate(name, value, (key, oldValue) => value);
+            }
+            finally
+            {
+                _lock.ExitWriteLock();
+            }
+        }
+
+        public object GetGlobalVariable(string name)
+        {
+            _lock.EnterReadLock();
+            try
+            {
+                return _globalVariables.TryGetValue(name, out object value) ? value : null;
+            }
+            finally
+            {
+                _lock.ExitReadLock();
+            }
+        }
+
+        public bool RemoveGlobalVariable(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+                return false;
+            _lock.EnterWriteLock();
+            try
+            {
+                return _globalVariables.TryRemove(name, out _);
+            }
+            finally
+            {
+                _lock.ExitWriteLock();
+            }
+        }
+
+        public void SetThreadLocalVariable(string name, object value)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+                throw new ArgumentException("Variable name cannot be null or empty", nameof(name));
+            var localVariables = _threadLocalVariables.Value;
+            localVariables.AddOrUpdate(name, value, (key, oldValue) => value);
+        }
+
+        public object GetThreadLocalVariable(string name)
+        {
+            var localVariables = _threadLocalVariables.Value;
+            return localVariables.TryGetValue(name, out object value) ? value : null;
+        }
+
+        public bool RemoveLocalThreadVariable(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+                return false;
+            var localVariables = _threadLocalVariables.Value;
+            return localVariables.TryRemove(name, out _);
         }
 
         private void RaiseError(Exception exception)

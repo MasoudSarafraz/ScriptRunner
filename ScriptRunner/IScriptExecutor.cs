@@ -36,5 +36,17 @@ namespace ScriptEngine
         List<string> GetLocalThreadFunctionList();
 
         List<string> GetAllFunctionList();
+
+        void SetGlobalVariable(string name, object value);
+
+        object GetGlobalVariable(string name);
+
+        bool RemoveGlobalVariable(string name);
+
+        void SetThreadLocalVariable(string name, object value);
+
+        object GetThreadLocalVariable(string name);
+
+        bool RemoveLocalThreadVariable(string name);
     }
 }

@@ -12,6 +12,10 @@
         <PackageReference Include="xunit.runner.visualstudio" Version="2.4.3" />
     </ItemGroup>
 
+    <ItemGroup Condition="'$(TargetFramework)' == 'net45'">
+        <Reference Include="Microsoft.CSharp" />
+    </ItemGroup>
+
     <ItemGroup>
         <ProjectReference Include="..\ScriptRunner\ScriptRunner.csproj" />
     </ItemGroup>
