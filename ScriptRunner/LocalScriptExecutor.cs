@@ -417,7 +417,7 @@ namespace ScriptEngine
             return localVariables.TryGetValue(name, out value);
         }
 
-        public bool TryRemoveThreadLocalVariable(string name, out object oldValue)
+        public bool TryRemoveLocalThreadVariable(string name, out object oldValue)
         {
             if (string.IsNullOrWhiteSpace(name))
             {
@@ -428,7 +428,7 @@ namespace ScriptEngine
             return localVariables.TryRemove(name, out oldValue);
         }
 
-        public bool ContainsThreadLocalVariable(string name)
+        public bool ContainsLocalThreadVariable(string name)
         {
             if (string.IsNullOrWhiteSpace(name))
                 return false;

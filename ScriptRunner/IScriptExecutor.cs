@@ -49,8 +49,8 @@ namespace ScriptEngine
 
         bool TryGetThreadLocalVariable(string name, out object value);
 
-        bool TryRemoveThreadLocalVariable(string name, out object oldValue);
+        bool TryRemoveLocalThreadVariable(string name, out object oldValue);
 
-        bool ContainsThreadLocalVariable(string name);
+        bool ContainsLocalThreadVariable(string name);
     }
 }
