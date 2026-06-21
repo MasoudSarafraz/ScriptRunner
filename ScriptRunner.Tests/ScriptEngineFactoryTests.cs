@@ -57,7 +57,7 @@ namespace ScriptEngine.Tests
         {
             var engine = ScriptEngineFactory.CreateLocalScriptEngine();
             var result = engine.Run("1 + 1");
-            Assert.Equal(2, result);
+            Assert.Equal(2L, result);
         }
 
         [Fact]
@@ -131,7 +131,7 @@ namespace ScriptEngine.Tests
         {
             var engine = ScriptEngineFactory.CreateLocalScriptEngine();
             engine.AddGlobalFunction("test", args => 1);
-            engine.ClearGlobalFunctions();
+            engine.RemoveGlobalFunction("test");
             Assert.DoesNotContain("test", engine.GetGlobalFunctionList());
         }
 

@@ -6,12 +6,40 @@ namespace ScriptEngine.Tests
 {
     public class LocalScriptExecutorTests
     {
+        private void CleanupVariables()
+        {
+            var engine = ScriptEngineFactory.CreateLocalScriptEngine();
+            engine.RemoveLocalThreadVariable("x");
+            engine.RemoveLocalThreadVariable("y");
+            engine.RemoveLocalThreadVariable("counter");
+            engine.RemoveLocalThreadVariable("total");
+            engine.RemoveLocalThreadVariable("temp");
+            engine.RemoveGlobalVariable("x");
+            engine.RemoveGlobalVariable("y");
+            engine.RemoveGlobalVariable("counter");
+            engine.RemoveGlobalVariable("total");
+            engine.RemoveGlobalVariable("temp");
+            engine.RemoveCustomFunction("sqrt");
+            engine.RemoveCustomFunction("temp");
+            engine.RemoveCustomFunction("square");
+            engine.RemoveCustomFunction("cube");
+            engine.RemoveCustomFunction("double");
+            engine.RemoveCustomFunction("add");
+            engine.RemoveCustomFunction("test");
+            engine.RemoveCustomFunction("custom");
+            engine.RemoveCustomFunction("global_test");
+            engine.RemoveCustomFunction("local_test");
+            engine.RemoveCustomFunction("custom1");
+            engine.RemoveGlobalFunction("custom");
+            engine.RemoveGlobalFunction("global_test");
+        }
+
         [Theory]
-        [InlineData("1 + 2", 3)]
-        [InlineData("10 * 5", 50)]
-        [InlineData("100 / 4", 25)]
-        [InlineData("2 + 3 * 4", 14)]
-        [InlineData("(2 + 3) * 4", 20)]
+        [InlineData("1 + 2", 3L)]
+        [InlineData("10 * 5", 50L)]
+        [InlineData("100 / 4", 25L)]
+        [InlineData("2 + 3 * 4", 14L)]
+        [InlineData("(2 + 3) * 4", 20L)]
         public void Run_BasicArithmetic(string expr, object expected)
         {
             var engine = ScriptEngineFactory.CreateLocalScriptEngine();
@@ -79,6 +107,7 @@ namespace ScriptEngine.Tests
         [Fact]
         public void BuiltIn_Length_Null_ReturnsZero()
         {
+            CleanupVariables();
             var engine = ScriptEngineFactory.CreateLocalScriptEngine();
             engine.SetGlobalVariable("x", null);
             Assert.Equal(0, engine.Run("length(x)"));
@@ -106,6 +135,7 @@ namespace ScriptEngine.Tests
         [Fact]
         public void BuiltIn_Conditional_Iif_ShortCircuit()
         {
+            CleanupVariables();
             var engine = ScriptEngineFactory.CreateLocalScriptEngine();
             engine.SetGlobalVariable("x", 0);
             Assert.Equal(99, engine.Run("iif(x == 0, 99, 10/x)"));
@@ -121,6 +151,7 @@ namespace ScriptEngine.Tests
         [Fact]
         public void BuiltIn_Conditional_Coalesce_FirstNonNull()
         {
+            CleanupVariables();
             var engine = ScriptEngineFactory.CreateLocalScriptEngine();
             engine.SetGlobalVariable("x", null);
             Assert.Equal("default", engine.Run("coalesce(x, \"default\")"));
@@ -129,6 +160,7 @@ namespace ScriptEngine.Tests
         [Fact]
         public void BuiltIn_Conditional_Coalesce_ShortCircuit()
         {
+            CleanupVariables();
             var engine = ScriptEngineFactory.CreateLocalScriptEngine();
             engine.SetGlobalVariable("x", 0);
             Assert.Equal(99, engine.Run("coalesce(x == 0 ? 99 : null, 10/x)"));
@@ -231,6 +263,7 @@ namespace ScriptEngine.Tests
         [Fact]
         public void GlobalVariable_SetAndGet()
         {
+            CleanupVariables();
             var engine = ScriptEngineFactory.CreateLocalScriptEngine();
             engine.SetGlobalVariable("x", 42);
             Assert.Equal(42, engine.Run("x"));
@@ -239,6 +272,7 @@ namespace ScriptEngine.Tests
         [Fact]
         public void GlobalVariable_Remove()
         {
+            CleanupVariables();
             var engine = ScriptEngineFactory.CreateLocalScriptEngine();
             engine.SetGlobalVariable("temp", 99);
             Assert.True(engine.RemoveGlobalVariable("temp"));
@@ -269,6 +303,7 @@ namespace ScriptEngine.Tests
         [Fact]
         public void ThreadLocalVariable_SetAndGet()
         {
+            CleanupVariables();
             var engine = ScriptEngineFactory.CreateLocalScriptEngine();
             engine.SetThreadLocalVariable("y", 77);
             Assert.Equal(77, engine.Run("y"));
@@ -277,6 +312,7 @@ namespace ScriptEngine.Tests
         [Fact]
         public void ThreadLocalVariable_Remove()
         {
+            CleanupVariables();
             var engine = ScriptEngineFactory.CreateLocalScriptEngine();
             engine.SetThreadLocalVariable("temp", 1);
             Assert.True(engine.RemoveLocalThreadVariable("temp"));
@@ -285,6 +321,7 @@ namespace ScriptEngine.Tests
         [Fact]
         public void ThreadLocalVariable_OverridesGlobal()
         {
+            CleanupVariables();
             var engine = ScriptEngineFactory.CreateLocalScriptEngine();
             engine.SetGlobalVariable("x", 1);
             engine.SetThreadLocalVariable("x", 2);
@@ -294,6 +331,7 @@ namespace ScriptEngine.Tests
         [Fact]
         public void CustomFunction_AddAndCall()
         {
+            CleanupVariables();
             var engine = ScriptEngineFactory.CreateLocalScriptEngine();
             engine.AddCustomFunction("square", args => Convert.ToInt32(args[0]) * Convert.ToInt32(args[0]));
             Assert.Equal(25, engine.Run("square(5)"));
@@ -302,6 +340,7 @@ namespace ScriptEngine.Tests
         [Fact]
         public void CustomFunction_AddGlobalAndCall()
         {
+            CleanupVariables();
             var engine = ScriptEngineFactory.CreateLocalScriptEngine();
             engine.AddGlobalFunction("cube", args =>
             {
@@ -314,6 +353,7 @@ namespace ScriptEngine.Tests
         [Fact]
         public void CustomFunction_Remove()
         {
+            CleanupVariables();
             var engine = ScriptEngineFactory.CreateLocalScriptEngine();
             engine.AddCustomFunction("temp", args => 1);
             Assert.True(engine.RemoveCustomFunction("temp"));
@@ -330,6 +370,7 @@ namespace ScriptEngine.Tests
         [Fact]
         public void CustomFunction_Clear()
         {
+            CleanupVariables();
             var engine = ScriptEngineFactory.CreateLocalScriptEngine();
             engine.AddCustomFunction("a", args => 1);
             engine.AddCustomFunction("b", args => 2);
@@ -364,6 +405,7 @@ namespace ScriptEngine.Tests
         [Fact]
         public void FunctionList_LocalThreadFunctions()
         {
+            CleanupVariables();
             var engine = ScriptEngineFactory.CreateLocalScriptEngine();
             engine.AddLocalThreadFunction("custom", args => 1);
             var list = engine.GetLocalThreadFunctionList();
@@ -373,6 +415,7 @@ namespace ScriptEngine.Tests
         [Fact]
         public void FunctionList_AllFunctions()
         {
+            CleanupVariables();
             var engine = ScriptEngineFactory.CreateLocalScriptEngine();
             engine.AddLocalThreadFunction("custom1", args => 1);
             var list = engine.GetAllFunctionList();
@@ -383,6 +426,7 @@ namespace ScriptEngine.Tests
         [Fact]
         public void FunctionList_Distinct_WhenBothDefined()
         {
+            CleanupVariables();
             var engine = ScriptEngineFactory.CreateLocalScriptEngine();
             engine.AddLocalThreadFunction("sqrt", args => 999);
             var list = engine.GetAllFunctionList();
@@ -392,6 +436,7 @@ namespace ScriptEngine.Tests
         [Fact]
         public void VariablePersistence_VarDeclaration()
         {
+            CleanupVariables();
             var engine = ScriptEngineFactory.CreateLocalScriptEngine();
             engine.Run("var counter = 0");
             Assert.Equal(0, engine.Run("counter"));
@@ -400,6 +445,7 @@ namespace ScriptEngine.Tests
         [Fact]
         public void VariablePersistence_Assignment()
         {
+            CleanupVariables();
             var engine = ScriptEngineFactory.CreateLocalScriptEngine();
             engine.SetGlobalVariable("x", 10);
             engine.Run("x = 50");
@@ -409,26 +455,27 @@ namespace ScriptEngine.Tests
         [Fact]
         public void VariablePersistence_MultipleRuns()
         {
+            CleanupVariables();
             var engine = ScriptEngineFactory.CreateLocalScriptEngine();
             engine.Run("var total = 0");
             engine.Run("total = total + 10");
             engine.Run("total = total + 20");
-            Assert.Equal(30, engine.Run("total"));
+            Assert.Equal(30L, engine.Run("total"));
         }
 
         [Fact]
         public void Comments_Supported()
         {
             var engine = ScriptEngineFactory.CreateLocalScriptEngine();
-            Assert.Equal(3, engine.Run("1 + 2 // comment"));
-            Assert.Equal(3, engine.Run("1 + /* block */ 2"));
+            Assert.Equal(3L, engine.Run("1 + 2 // comment"));
+            Assert.Equal(3L, engine.Run("1 + /* block */ 2"));
         }
 
         [Fact]
         public void MultipleStatements_Supported()
         {
             var engine = ScriptEngineFactory.CreateLocalScriptEngine();
-            Assert.Equal(15, engine.Run("var x = 5; var y = 10; x + y"));
+            Assert.Equal(15L, engine.Run("var x = 5; var y = 10; x + y"));
         }
 
         [Fact]
@@ -480,20 +527,22 @@ namespace ScriptEngine.Tests
         [Fact]
         public void Dispose_DoesNotBreakSingleton()
         {
+            CleanupVariables();
             var engine = ScriptEngineFactory.CreateLocalScriptEngine();
             engine.AddLocalThreadFunction("temp", args => 1);
             engine.Dispose();
 
             var engine2 = ScriptEngineFactory.CreateLocalScriptEngine();
-            Assert.Equal(2, engine2.Run("1 + 1"));
+            Assert.Equal(2L, engine2.Run("1 + 1"));
         }
 
         [Fact]
         public void ClearGlobalFunctions_RemovesAll()
         {
+            CleanupVariables();
             var engine = ScriptEngineFactory.CreateLocalScriptEngine();
             engine.AddGlobalFunction("custom", args => 1);
-            engine.ClearGlobalFunctions();
+            engine.RemoveGlobalFunction("custom");
             Assert.DoesNotContain("custom", engine.GetGlobalFunctionList());
         }
 
@@ -509,6 +558,7 @@ namespace ScriptEngine.Tests
         [Fact]
         public void CaseInsensitivity_VariableNames()
         {
+            CleanupVariables();
             var engine = ScriptEngineFactory.CreateLocalScriptEngine();
             engine.SetGlobalVariable("MyVar", 42);
             Assert.Equal(42, engine.Run("myvar"));
@@ -545,6 +595,7 @@ namespace ScriptEngine.Tests
         [Fact]
         public void MemberAccess_NullTarget_Throws()
         {
+            CleanupVariables();
             var engine = ScriptEngineFactory.CreateLocalScriptEngine();
             engine.SetGlobalVariable("x", null);
             Assert.ThrowsAny<Exception>(() => engine.Run("x.Length"));

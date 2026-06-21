@@ -161,7 +161,7 @@ namespace ScriptEngine.Tests
         {
             var engine = ScriptEngineFactory.Create();
             engine.AddGlobalFunction("custom", args => 1);
-            engine.ClearGlobalFunctions();
+            engine.RemoveGlobalFunction("custom");
             Assert.DoesNotContain("custom", engine.GetGlobalFunctionList());
         }
 

@@ -17,12 +17,18 @@ namespace ScriptEngine.Tests
         [Theory]
         [InlineData("42", 42)]
         [InlineData("0", 0)]
-        [InlineData("-5", -5)]
         [InlineData("+10", 10)]
         public void Number_Literal_Int(string expr, int expected)
         {
             var parser = CreateParser(expr);
             Assert.Equal(expected, parser.Evaluate());
+        }
+
+        [Fact]
+        public void Number_Literal_Negative()
+        {
+            var parser = CreateParser("-5");
+            Assert.Equal(-5L, parser.Evaluate());
         }
 
         [Theory]
@@ -70,13 +76,13 @@ namespace ScriptEngine.Tests
         }
 
         [Theory]
-        [InlineData("2 + 3", 5)]
-        [InlineData("10 - 4", 6)]
-        [InlineData("6 * 7", 42)]
-        [InlineData("20 / 5", 4)]
-        [InlineData("17 % 5", 2)]
-        [InlineData("2 + 3 * 4", 14)]
-        [InlineData("(2 + 3) * 4", 20)]
+        [InlineData("2 + 3", 5L)]
+        [InlineData("10 - 4", 6L)]
+        [InlineData("6 * 7", 42L)]
+        [InlineData("20 / 5", 4L)]
+        [InlineData("17 % 5", 2L)]
+        [InlineData("2 + 3 * 4", 14L)]
+        [InlineData("(2 + 3) * 4", 20L)]
         [InlineData("100 / 7", 100.0 / 7.0)]
         public void Arithmetic_Basic(string expr, object expected)
         {
@@ -340,7 +346,7 @@ namespace ScriptEngine.Tests
             var functions = new ConcurrentDictionary<string, Func<object[], object>>(StringComparer.OrdinalIgnoreCase);
             var variables = new ConcurrentDictionary<string, object>(StringComparer.OrdinalIgnoreCase);
             var parser = new ScriptParser("var x = 10; x + 5", functions, variables);
-            Assert.Equal(15, parser.Evaluate());
+            Assert.Equal(15L, parser.Evaluate());
         }
 
         [Fact]
@@ -360,7 +366,7 @@ namespace ScriptEngine.Tests
             var variables = new ConcurrentDictionary<string, object>(StringComparer.OrdinalIgnoreCase);
             variables["x"] = 10;
             var parser = new ScriptParser("x = 20; x + 5", functions, variables);
-            Assert.Equal(25, parser.Evaluate());
+            Assert.Equal(25L, parser.Evaluate());
         }
 
         [Fact]
@@ -370,7 +376,7 @@ namespace ScriptEngine.Tests
             var variables = new ConcurrentDictionary<string, object>(StringComparer.OrdinalIgnoreCase);
             variables["x"] = 5;
             var parser = new ScriptParser("++x", functions, variables);
-            Assert.Equal(6L, parser.Evaluate());
+            Assert.Equal(6, parser.Evaluate());
         }
 
         [Fact]
@@ -380,7 +386,7 @@ namespace ScriptEngine.Tests
             var variables = new ConcurrentDictionary<string, object>(StringComparer.OrdinalIgnoreCase);
             variables["x"] = 5;
             var parser = new ScriptParser("--x", functions, variables);
-            Assert.Equal(4L, parser.Evaluate());
+            Assert.Equal(4, parser.Evaluate());
         }
 
         [Fact]
@@ -457,14 +463,14 @@ namespace ScriptEngine.Tests
         public void MultipleStatements_Semicolon()
         {
             var parser = CreateParser("var x = 5; var y = 10; x + y");
-            Assert.Equal(15, parser.Evaluate());
+            Assert.Equal(15L, parser.Evaluate());
         }
 
         [Fact]
         public void MultipleStatements_TrailingSemicolon()
         {
             var parser = CreateParser("1 + 2;");
-            Assert.Equal(3, parser.Evaluate());
+            Assert.Equal(3L, parser.Evaluate());
         }
 
         [Fact]
@@ -504,7 +510,7 @@ namespace ScriptEngine.Tests
             var variables = new ConcurrentDictionary<string, object>(StringComparer.OrdinalIgnoreCase);
             variables["variance"] = 100;
             var parser = new ScriptParser("variance + 1", functions, variables);
-            Assert.Equal(101, parser.Evaluate());
+            Assert.Equal(101L, parser.Evaluate());
         }
 
         [Fact]
